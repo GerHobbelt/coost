@@ -17,6 +17,11 @@
 #endif
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+
 inline void _cerr(const void* s, size_t n) {
     auto r = ::fwrite(s, 1, n, stderr); (void)r;
 }
