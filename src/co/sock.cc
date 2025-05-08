@@ -465,7 +465,7 @@ io_event::io_event(sock_t fd, ev_t ev, const void* buf, int size, int n)
         _per_io = (void*)p;
     } else {
         auto p = per_io_t::create(s->running(), n, size);
-        p->buf.buf = _per_io->s + n;
+        p->buf.buf = p->s + n;
         p->buf.len = size;
         if (ev == ev_read) {
             _copy_to = (void*)buf;
@@ -775,7 +775,7 @@ int recvfrom(sock_t fd, void* buf, int n, sockaddr& addr, int ms) {
     memcpy(&addr, s + 8, x);
     addr.len = x;
     addr.valid = true;
-    return (int)ev->n;
+    return (int)p.n;
 }
 
 int send(sock_t fd, const void* buf, int n, int ms) {
@@ -910,7 +910,7 @@ SockInit::SockInit() {
     g_can_skip_iocp_on_success = _can_skip_iocp_on_success();
 }
 
-CoInit::~CoInit() {
+SockInit::~SockInit() {
     WSACleanup();
 }
 
