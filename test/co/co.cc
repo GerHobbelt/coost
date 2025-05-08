@@ -1,17 +1,18 @@
 #include "co/co.h"
 #include "co/stl.h"
 #include "co/cout.h"
+#include "co/flag.h"
 
 DEF_int32(n, 32, "n coroutines");
 
 co::wait_group g_wg;
-co::mutex g_m;
+co::cutex g_m;
 co::map<int, int> g_c;
 
 void f() {
     co::sleep(32);
     {
-        co::mutex_guard g(g_m);
+        co::cutex_guard g(g_m);
         g_c[co::sched_id()]++;
     }
     g_wg.done();

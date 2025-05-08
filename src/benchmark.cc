@@ -2,27 +2,22 @@
 #include "co/fastring.h"
 #include "co/cout.h"
 
+namespace co {
 namespace bm {
-namespace xx {
-
-int calc_iters(int64 ns) {
-    if (ns <= 1000) return 100 * 1000;
-    if (ns <= 10000) return 10 * 1000;
-    if (ns <= 100000) return 1000;
-    if (ns <= 1000000) return 100;
-    if (ns <= 10000000) return 10;
-    return 1;
-}
 
 static co::vector<Group>* g_g;
 
 inline co::vector<Group>& groups() {
-    return g_g ? *g_g : *(g_g = co::_make_static<co::vector<Group>>());
+    return g_g ? *g_g : *(g_g = []() {
+        auto g = co::_make_static<co::vector<Group>>();
+        g->reserve(8);
+        return g;
+    }());
 }
 
 bool add_group(const char* name, void (*f)(Group&)) {
-    groups().push_back(Group(name, f));
-    return true;
+    groups().emplace_back(name, f);
+    return false;
 }
 
 // do nothing, just fool the compiler
@@ -36,15 +31,15 @@ struct Num {
         if (v < 0.01) {
             s = "< 0.01";
         } else if (v < 1000.0) {
-            s << dp::_2(v);
+            s << co::dp::_2(v);
         } else if (v < 1000000.0) {
-            s << dp::_2(v / 1000) << 'K';
+            s << co::dp::_2(v / 1000) << 'K';
         } else if (v < 1000000000.0) {
-            s << dp::_2(v / 1000000) << 'M';
+            s << co::dp::_2(v / 1000000) << 'M';
         } else {
             const double x = v / 1000000000;
             if (x <= 1000.0) {
-                s << dp::_2(x) << 'G';
+                s << co::dp::_2(x) << 'G';
             } else {
                 s << "> 1000G";
             }
@@ -67,15 +62,19 @@ void print_results(Group& g) {
         if (maxlen < x) maxlen = x;
     }
 
-    cout << "|  " << text::bold(g.name).blue() << fastring(maxlen - grplen + 2, ' ')
-         << "|  " << text::bold("ns/iter  ").blue()
-         << "|  " << text::bold("iters/s  ").blue()
-         << "|  " << text::bold("speedup  ").blue() << "|\n";
-
-    cout << "| " << fastring(maxlen + 2, '-') << ' '
-         << "| " << fastring(9, '-') << ' '
-         << "| " << fastring(9, '-') << ' '
-         << "| " << fastring(9, '-') << ' ' << "|\n";
+    const fastring _9_(9, '-');
+    co::cout(
+        "|  ", co::text(g.name, color::bright_magenta), fastring(maxlen - grplen + 2, ' '),
+        "|  ", co::text("ns/iter  ", color::bright_blue),
+        "|  ", co::text("iters/s  ", color::bright_blue),
+        "|  ", co::text("speedup  ", color::bright_blue),
+        '|', '\n',
+        "| ", fastring(maxlen + 2, '-'), ' ',
+        "| ", _9_, ' ',
+        "| ", _9_, ' ',
+        "| ", _9_, ' ',
+        '|', '\n'
+    );
 
     for (size_t i = 0; i < g.res.size(); ++i) {
         auto& r = g.res[i];
@@ -83,13 +82,15 @@ void print_results(Group& g) {
         fastring t = Num(r.ns).str();
         size_t p = t.size() <= 7 ? 9 - t.size() : 2;
 
-        cout << "|  " << text::green(r.bm) << fastring(maxlen - bmlen + 2, ' ')
-             << "|  " << text::red(t) << fastring(p, ' ');
+        co::cout(
+            "|  ", co::text(r.bm, color::bright_green), fastring(maxlen - bmlen + 2, ' '),
+            "|  ", co::text(t.c_str(), color::bright_cyan), fastring(p, ' ')
+        );
 
         double x = r.ns > 0 ? 1000000000.0 / r.ns : 1.2e12;
         t = Num(x).str();
         p = t.size() <= 7 ? 9 - t.size() : 2;
-        cout << "|  " << text::red(t) << fastring(p, ' ');
+        co::cout("|  ", co::text(t.c_str(), color::bright_cyan), fastring(p, ' '));
 
         if (i == 0) {
             t = "1.0";
@@ -100,20 +101,20 @@ void print_results(Group& g) {
         }
 
         p = t.size() <= 7 ? 9 - t.size() : 2;
-        cout << "|  " << text::yellow(t) << fastring(p, ' ') << "|\n";
-    }
-}
-
-} // xx
-
-void run_benchmarks() {
-    auto& groups = xx::groups();
-    for (size_t i = 0; i < groups.size(); ++i) {
-        if (i != 0) cout << '\n';
-        auto& g = groups[i];
-        g.f(g);
-        xx::print_results(g);
+        co::cout("|  ", co::text(t.c_str(), color::bright_yellow), fastring(p, ' '), '|', '\n');
     }
 }
 
 } // bm
+
+void run_benchmarks() {
+    auto& groups = bm::groups();
+    for (size_t i = 0; i < groups.size(); ++i) {
+        if (i != 0) co::cout('\n');
+        auto& g = groups[i];
+        g.f(g);
+        bm::print_results(g);
+    }
+}
+
+} // co

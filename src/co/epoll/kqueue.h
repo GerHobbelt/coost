@@ -1,62 +1,41 @@
 #pragma once
 
 #if !defined(_WIN32) && !defined(__linux__)
-#include "co/co.h"
-#include "co/log.h"
-#include "../hook.h"
-#include "../sock_ctx.h"
-#include <time.h>
-#include <sys/event.h>
+#include "co/sock.h"
+#include "co/mem.h"
+#include <functional>
 
 namespace co {
 
-class Kqueue {
-  public:
-    Kqueue(int sched_id);
+struct alignas(co::cache_line_size) Kqueue {
+    typedef std::function<void(void*)> ev_cb_t;
+
+    Kqueue(ev_cb_t&& cb);
     ~Kqueue();
 
-    bool add_ev_read(int fd, void* ud);
-    bool add_ev_write(int fd, void* ud);
+    int wait(int ms);
+    void signal();
+    void handle_events();
+
+    bool add_ev_read(int fd, void* c);
+    bool add_ev_write(int fd, void* c);
     void del_ev_read(int fd);
     void del_ev_write(int fd);
-
-    /**
-     * remove all events on the socket from kqueue 
-     *   - When a socket was closed, events on that socket will be removed from 
-     *     kqueue automatically, and we needn't call del_event() manually.
-     */
     void del_event(int fd);
 
-    int wait(int ms) {
-        if (ms >= 0) {
-            struct timespec ts = { ms / 1000, ms % 1000 * 1000000 };
-            return __sys_api(kevent)(_kq, 0, 0, _ev, 1024, &ts);
-        } else {
-            return __sys_api(kevent)(_kq, 0, 0, _ev, 1024, 0);
-        }
-    }
-
-    void signal(char c = 'x') {
-        if (atomic_bool_cas(&_signaled, 0, 1, mo_acq_rel, mo_acquire)) {
-            const int r = (int) __sys_api(write)(_pipe_fds[1], &c, 1);
-            ELOG_IF(r != 1) << "pipe write error..";
-        }
-    }
-
-    const struct kevent& operator[](int i)    const { return _ev[i]; }
-    void* user_data(const struct kevent& ev) { return ev.udata; }
-    bool is_ev_pipe(const struct kevent& ev) { return ev.udata == 0; }
-    void handle_ev_pipe();
-    void close();
-   
-  private:
+    void _handle_ev_pipe();
+  
+    union {
+        char _buf[co::cache_line_size];
+        uint8 _signaled;
+    };
     int _kq;
     int _pipe_fds[2];
-    int _signaled;
-    struct kevent* _ev;
+    int _n;
+    void* _events;
+    ev_cb_t _cb;
 };
 
-typedef struct kevent epoll_event;
 typedef Kqueue Epoll;
 
 } // co

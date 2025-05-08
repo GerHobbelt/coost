@@ -3,13 +3,34 @@
 #include "fastream.h"
 #include <iostream>
 
-using std::cout;
-using std::endl;
-
 namespace co {
+namespace xx {
+
+struct CoutInit {
+    CoutInit();
+    ~CoutInit() = default;
+};
+
+static CoutInit g_cout_init;
+
+struct Print {
+    Print();
+    ~Print();
+    fastream& s;
+    size_t n;
+};
+
+enum Endl {
+    endl,
+};
+
+} // xx
+
+using xx::endl;
+
 namespace color {
 
-enum Color {
+enum color_t {
     deflt = 0,
     red = 1,
     green = 2,
@@ -18,110 +39,58 @@ enum Color {
     magenta = 5, // blue | red
     cyan = 6,    // blue | green
     bold = 8,
+    bright_red = 9,
+    bright_green = 10,
+    bright_yellow = 11,
+    bright_blue = 12,
+    bright_magenta = 13,
+    bright_cyan = 14,
 };
 
 } // color
 
-namespace text {
-
-struct Text {
-    constexpr Text(const char* s, size_t n, color::Color c) noexcept
-        : s(s), n(n), c(c) {
-    }
+struct text {
+    constexpr text(const char* s, color::color_t c) noexcept
+        : s(s), c(c) {
+    } 
     const char* s;
-    size_t n;
-    color::Color c;
+    color::color_t c;
 };
 
-inline Text red(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::red);
-}
-
-inline Text green(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::green);
-}
-
-inline Text blue(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::blue);
-}
-
-inline Text yellow(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::yellow);
-}
-
-inline Text magenta(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::magenta);
-}
-
-inline Text cyan(const anystr& s) noexcept {
-    return Text(s.data(), s.size(), color::cyan);
-}
-
-struct Bold {
-    constexpr Bold(const char* s, size_t n) noexcept
-        : s(s), n(n), c(color::bold) {
-    }
-    Bold& red() noexcept { i |= color::red; return *this; }
-    Bold& green() noexcept { i |= color::green; return *this; }
-    Bold& blue() noexcept { i |= color::blue; return *this; }
-    Bold& yellow() noexcept { i |= color::yellow; return *this; }
-    Bold& magenta() noexcept { i |= color::magenta; return *this; }
-    Bold& cyan() noexcept { i |= color::cyan; return *this; }
-    const char* s;
-    size_t n;
-    union {
-        int i;
-        color::Color c;
-    };
-};
-
-inline Bold bold(const anystr& s) noexcept {
-    return Bold(s.data(), s.size());
-}
-
-} // text
 } // co
 
 namespace color = co::color;
-namespace text = co::text;
 
-__coapi std::ostream& operator<<(std::ostream&, color::Color);
-__coapi fastream& operator<<(fastream&, color::Color);
+std::ostream& operator<<(std::ostream&, color::color_t);
+fastream& operator<<(fastream&, color::color_t);
 
-inline std::ostream& operator<<(std::ostream& os, const text::Text& x) {
-    return (os << x.c).write(x.s, x.n) << color::deflt;
+inline std::ostream& operator<<(std::ostream& s, const co::text& t) {
+    return s << t.c << t.s << color::deflt;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const text::Bold& x) {
-    return (os << x.c).write(x.s, x.n) << color::deflt;
+inline fastream& operator<<(fastream& s, const co::text& t) {
+    return s << t.c << t.s << color::deflt;
 }
 
-inline fastream& operator<<(fastream& os, const text::Text& x) {
-    return (os << x.c).append(x.s, x.n) << color::deflt;
+inline std::ostream& operator<<(std::ostream& os, co::xx::Endl) {
+    return (os << '\n').flush();
 }
-
-inline fastream& operator<<(fastream& os, const text::Bold& x) {
-    return (os << x.c).append(x.s, x.n) << color::deflt;
-}
-
 
 namespace co {
-namespace xx {
 
-struct __coapi Cout {
-    Cout();
-    ~Cout();
-    fastream& s;
-    size_t n;
-};
+inline std::ostream& cout() { return std::cout; }
 
-} // xx
+// print to stdout
+template<typename X, typename ...V>
+inline std::ostream& cout(X&& x, V&& ... v) {
+    std::cout << std::forward<X>(x);
+    return co::cout(std::forward<V>(v)...);
+}
 
 // print to stdout with newline (thread-safe)
-//   - co::print("hello", text::green(" xxx "), 23);
 template<typename ...X>
-inline void print(X&& ... x) {
-    xx::Cout().s.cat(std::forward<X>(x)...);
+inline void print(X&& ...x) {
+    xx::Print().s.cat(std::forward<X>(x)...);
 }
 
 } // co

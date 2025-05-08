@@ -1,16 +1,36 @@
-#include "co/all.h"
+#include "co/atomic.h"
+#include "co/rand.h"
 #include "co/benchmark.h"
+#include "co/mem.h"
+#include "co/flag.h"
+#include "../src/co/idgen.h"
+
+BM_group(idgen) {
+    int i;
+    co::IdGen g;
+
+    BM_add(pop) {
+        i = g.pop();
+    }
+    BM_use(i);
+
+    BM_add(pop_push) {
+        i = g.pop();
+        g.push(i);
+    }
+    BM_use(i);
+}
 
 BM_group(atomic) {
     int i = 0;
 
-    BM_add(++)(
-        atomic_inc(&i);
-    );
+    BM_add(++) {
+        co::atomic_inc(&i);
+    }
 
-    BM_add(--)(
-        atomic_dec(&i);
-    );
+    BM_add(--) {
+        co::atomic_dec(&i);
+    }
 }
 
 BM_group(rand) {
@@ -18,65 +38,65 @@ BM_group(rand) {
     x = ::rand();
     x = co::rand();
 
-    BM_add(::rand)(
+    BM_add(::rand) {
         x = ::rand();
-    );
+    }
     BM_use(x);
 
-    BM_add(co::rand)(
+    BM_add(co::rand) {
         x = co::rand();
-    );
+    }
     BM_use(x);
 
     uint32 seed = co::rand();
-    BM_add(co::rand(seed))(
+    BM_add(co::rand(seed)) {
         x = co::rand(seed);
-    );
+    }
     BM_use(x);
 
     fastring s;
-    BM_add(co::randstr)(
+    BM_add(co::randstr) {
         s = co::randstr();
-    );
+    }
     BM_use(s);
 }
 
 BM_group(malloc) {
     void* p;
 
-    BM_add(::malloc)(
+    BM_add(::malloc) {
         p = ::malloc(32);
-    );
+    }
     BM_use(p);
 
-    BM_add(co::alloc)(
+    BM_add(co::alloc) {
         p = co::alloc(32);
-    );
+    }
     BM_use(p);
 
-    BM_add(co::alloc_with_align)(
+    BM_add(co::alloc_with_align) {
         p = co::alloc(32, 64);
-    );
+    }
     BM_use(p);
 }
 
 BM_group(malloc_free) {
     void* p;
 
-    BM_add(malloc+free)(
+    BM_add(malloc+free) {
         p = ::malloc(32);
         ::free(p);
-    );
+    }
     BM_use(p);
 
-    BM_add(co::alloc+free)(
+    BM_add(co::alloc+free) {
         p = co::alloc(32);
         co::free(p, 32);
-    );
+    }
 }
 
 int main(int argc, char** argv) {
-    flag::parse(argc, argv);
-    bm::run_benchmarks();
+    flag::parse(argc, argv, true);
+    co::run_benchmarks();
     return 0;
 }

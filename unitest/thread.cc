@@ -1,5 +1,5 @@
 #include "co/unitest.h"
-#include "co/co/thread.h"
+#include "co/thread.h"
 
 namespace test {
 
@@ -21,19 +21,6 @@ DEF_test(thread) {
 
     DEF_case(gettid) {
         EXPECT_NE(co::thread_id(), -1);
-    }
-
-    DEF_case(tls) {
-        co::tls<int> pi;
-        EXPECT(!pi);
-        EXPECT(pi == NULL);
-
-        int* p = co::make_static<int>(7);
-        pi.set(p);
-        EXPECT(pi == p);
-        EXPECT_EQ(pi.get(), p);
-        EXPECT_EQ(*pi, 7);
-        EXPECT_EQ(*pi.get(), 7);
     }
 }
 

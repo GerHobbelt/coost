@@ -7,9 +7,9 @@ struct clink {
     clink* prev;
 };
 
-class clist {
-  public:
+struct clist {
     constexpr static clink* const null = (clink*)0;
+
     constexpr clist() noexcept : _head(0) {}
     ~clist() = default;
 
@@ -108,7 +108,16 @@ class clist {
 
     void swap(clist&& l) { l.swap(*this); }
 
-  private:
+    // run f on each element
+    template<typename F>
+    void for_each(F&& f) {
+        for (clink* c = _head; c;) {
+            const auto x = c;
+            c = c->next;
+            f(x);
+        }
+    }
+
     clink* _head;
 };
 

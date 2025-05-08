@@ -11,7 +11,7 @@
 namespace json {
 namespace xx {
 
-struct __coapi Initializer {
+struct Initializer {
     Initializer();
     ~Initializer() = default;
 };
@@ -99,12 +99,12 @@ class Array {
     _H* _h;
 };
 
-__coapi void* alloc();
-__coapi char* alloc_string(const void* p, size_t n);
+void* alloc();
+char* alloc_string(const void* p, size_t n);
 
 } // xx
 
-class __coapi Json {
+class Json {
   public:
     enum {
         t_null = 0,
@@ -207,10 +207,10 @@ class __coapi Json {
     bool as_bool() const {
         if (_h) {
             switch (_h->type) {
-              case t_bool:   return _h->b;
-              case t_int:    return _h->i != 0;
-              case t_string: return str::to_bool(_h->s);
-              case t_double: return _h->d != 0;
+            case t_bool:   return _h->b;
+            case t_int:    return _h->i != 0;
+            case t_string: return str::to_bool(_h->s);
+            case t_double: return _h->d != 0;
             }
         }
         return false;
@@ -223,10 +223,10 @@ class __coapi Json {
     int64 as_int64() const {
         if (_h) {
             switch (_h->type) {
-              case t_int:    return _h->i;
-              case t_string: return str::to_int64(_h->s);
-              case t_double: return (int64)_h->d;
-              case t_bool:   return _h->b ? 1 : 0;
+            case t_int:    return _h->i;
+            case t_string: return str::to_int64(_h->s);
+            case t_double: return (int64)_h->d;
+            case t_bool:   return _h->b ? 1 : 0;
             }
         }
         return 0;
@@ -242,25 +242,32 @@ class __coapi Json {
     double as_double() const {
         if (_h) {
             switch (_h->type) {
-              case t_double: return _h->d;
-              case t_int:    return (double)_h->i;
-              case t_string: return str::to_double(_h->s);
-              case t_bool:   return _h->b ? 1 : 0;
+            case t_double: return _h->d;
+            case t_int:    return (double)_h->i;
+            case t_string: return str::to_double(_h->s);
+            case t_bool:   return _h->b ? 1 : 0;
             }
         }
         return 0;
     }
 
     // returns a c-style string, null-terminated.
-    // for non-string types, returns an empty string.
+    // for non-string types, returns empty string.
     const char* as_c_str() const {
         return this->is_string() ? _h->s : "";
     }
 
     // returns a fastring.
-    // for non-string types, it is equal to Json::str().
+    //   - for null, return empty string
+    //   - for other non-string types, it is equal to Json::str().
     fastring as_string() const {
-        return this->is_string() ? fastring(_h->s, _h->size) : this->str();
+        if (_h) {
+            switch (_h->type) {
+            case t_string: return fastring(_h->s, _h->size);
+            default: return this->str();
+            }
+        }
+        return fastring();
     }
 
     // get Json by index or key.
@@ -369,11 +376,11 @@ class __coapi Json {
     uint32 size() const {
         if (_h) {
             switch (_h->type) {
-              case t_array:
+            case t_array:
                 return _h->p ? _array().size() : 0;
-              case t_object:
+            case t_object:
                 return _h->p ? (_array().size() >> 1) : 0;
-              case t_string:
+            case t_string:
                 return _h->size;
             }
         }
@@ -507,13 +514,13 @@ class __coapi Json {
 inline Json array() { return Json(Json::_arr_t()); }
 
 // make an array from initializer_list
-__coapi Json array(std::initializer_list<Json> v);
+Json array(std::initializer_list<Json> v);
 
 // make an empty object
 inline Json object() { return Json(Json::_obj_t()); }
 
 // make an object from initializer_list
-__coapi Json object(std::initializer_list<Json> v);
+Json object(std::initializer_list<Json> v);
 
 inline Json parse(const char* s, size_t n) {
     Json r;

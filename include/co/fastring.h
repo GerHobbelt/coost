@@ -4,49 +4,36 @@
 #pragma warning (disable:4706) // if ((a = x))
 #endif
 
-#include "fast.h"
-#include "hash/murmur_hash.h"
+#include "stream.h"
+#include "murmur_hash.h"
+#include "search.h"
 #include <string>
 #include <ostream>
 
-namespace str {
-__coapi char* memrchr(const char* s, char c, size_t n);
-__coapi char* memmem(const char* s, size_t n, const char* p, size_t m);
-__coapi char* memimem(const char* s, size_t n, const char* p, size_t m);
-__coapi char* memrmem(const char* s, size_t n, const char* p, size_t m);
-__coapi bool match(const char* s, size_t n, const char* p, size_t m);
-
-inline int memcmp(const char* s, size_t n, const char* p, size_t m) {
-    const int i = ::memcmp(s, p, n < m ? n : m);
-    return i != 0 ? i : (n < m ? -1 : n != m);
-}
-} // str
-
-class __coapi fastring : public fast::stream {
-  public:
+struct fastring : co::stream {
     static const size_t npos = (size_t)-1;
 
     constexpr fastring() noexcept
-        : fast::stream() {
+        : co::stream() {
     }
 
     explicit fastring(size_t cap)
-        : fast::stream(cap) {
+        : co::stream(cap) {
     }
 
     ~fastring() = default;
 
     fastring(size_t n, char c)
-        : fast::stream(n + 1, n) {
+        : co::stream(n + 1, n) {
         memset(_p, c, n);
     }
 
     fastring(char* p, size_t cap, size_t size)
-        : fast::stream(p, cap, size) {
+        : co::stream(p, cap, size) {
     }
 
     fastring(const void* s, size_t n)
-        : fast::stream(n + !!n, n) {
+        : co::stream(n + !!n, n) {
         memcpy(_p, s, n);
     }
 
@@ -63,11 +50,11 @@ class __coapi fastring : public fast::stream {
     }
 
     fastring(fastring&& s) noexcept
-        : fast::stream(std::move(s)) {
+        : co::stream(std::move(s)) {
     }
 
     fastring& operator=(fastring&& s) {
-        return (fastring&) fast::stream::operator=(std::move(s));
+        return (fastring&) co::stream::operator=(std::move(s));
     }
 
     fastring& operator=(const fastring& s) {
@@ -103,19 +90,17 @@ class __coapi fastring : public fast::stream {
     }
 
     fastring& append(const void* p, size_t n) {
-        return (fastring&) fast::stream::append(p, n);
+        return (fastring&) co::stream::append(p, n);
     }
  
-    // like append(), but will not check if p overlaps with the internal memory
     fastring& append_nomchk(const void* p, size_t n) {
-        return (fastring&) fast::stream::append_nomchk(p, n);
+        return (fastring&) co::stream::append_nomchk(p, n);
     }
 
     fastring& append(const char* s) {
         return this->append(s, strlen(s));
     }
 
-    // like append(), but will not check if s overlaps with the internal memory
     fastring& append_nomchk(const char* s) {
         return this->append_nomchk(s, strlen(s));
     }
@@ -133,11 +118,11 @@ class __coapi fastring : public fast::stream {
     }
 
     fastring& append(size_t n, char c) {
-        return (fastring&) fast::stream::append(n, c);
+        return (fastring&) co::stream::append(n, c);
     }
 
     fastring& append(char c) {
-        return (fastring&) fast::stream::append(c);
+        return (fastring&) co::stream::append(c);
     }
 
     fastring& push_back(char c) { return this->append(c); }
@@ -169,11 +154,11 @@ class __coapi fastring : public fast::stream {
     }
 
     fastring& operator<<(bool v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(char v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(signed char v) {
@@ -185,57 +170,57 @@ class __coapi fastring : public fast::stream {
     }
 
     fastring& operator<<(short v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(unsigned short v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(int v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(unsigned int v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(long v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(unsigned long v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(long long v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(unsigned long long v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(double v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(float v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     // float point number with max decimal places set
-    //   - fastring() << dp::_2(3.1415);  // -> 3.14
-    fastring& operator<<(const dp::_fpt& v) {
-        return (fastring&) fast::stream::operator<<(v);
+    //   - fastring() << co::dp::_2(3.1415);  // -> 3.14
+    fastring& operator<<(const co::dp::D& v) {
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(const void* v) {
-        return (fastring&) fast::stream::operator<<(v);
+        return (fastring&) co::stream::operator<<(v);
     }
 
     fastring& operator<<(std::nullptr_t) {
-        return (fastring&) fast::stream::operator<<(nullptr);
+        return (fastring&) co::stream::operator<<(nullptr);
     }
 
     fastring& operator<<(const char* s) {
@@ -259,7 +244,7 @@ class __coapi fastring : public fast::stream {
     }
 
     int compare(const char* s, size_t n) const {
-        return str::memcmp(_p, _size, s, n);
+        return co::memcmp(_p, _size, s, n);
     }
 
     int compare(const char* s) const {
@@ -274,36 +259,6 @@ class __coapi fastring : public fast::stream {
         return this->compare(s.data(), s.size());
     }
 
-    int compare(size_t pos, size_t len, const char* s, size_t n) const {
-        const intptr_t x = (intptr_t)(_size - pos);
-        if (x > 0) return str::memcmp(_p + pos, len < (size_t)x ? len : x, s, n);
-        return str::memcmp(_p, 0, s, n);
-    }
-
-    int compare(size_t pos, size_t len, const char* s) const {
-        return this->compare(pos, len, s, strlen(s));
-    }
-
-    int compare(size_t pos, size_t len, const fastring& s) const {
-        return this->compare(pos, len, s.data(), s.size());
-    }
-
-    int compare(size_t pos, size_t len, const std::string& s) const {
-        return this->compare(pos, len, s.data(), s.size());
-    }
-
-    int compare(size_t pos, size_t len, const fastring& s, size_t spos, size_t n=npos) const {
-        const intptr_t x = (intptr_t)(s.size() - spos);
-        if (x > 0) return this->compare(pos, len, s.data() + spos, n < (size_t)x ? n : x);
-        return this->compare(pos, len, s.data(), 0);
-    }
-
-    int compare(size_t pos, size_t len, const std::string& s, size_t spos, size_t n=npos) const {
-        const intptr_t x = (intptr_t)(s.size() - spos);
-        if (x > 0) return this->compare(pos, len, s.data() + spos, n < (size_t)x ? n : x);
-        return this->compare(pos, len, s.data(), 0);
-    }
-
     bool contains(char c) const {
         return this->find(c) != npos;
     }
@@ -313,11 +268,11 @@ class __coapi fastring : public fast::stream {
     }
 
     bool contains(const fastring& s) const {
-        return this->contains(s.c_str());
+        return this->find(s) != npos;
     }
 
     bool contains(const std::string& s) const {
-        return this->contains(s.c_str());
+        return this->find(s) != npos;
     }
 
     bool starts_with(char c) const {
@@ -406,25 +361,17 @@ class __coapi fastring : public fast::stream {
     }
 
     // remove characters in @s at the left or right side, or both sides
-    // @d: 'l' or 'L' for left, 'r' or 'R' for right, otherwise for both sides
     fastring& trim(const char* s=" \t\r\n", char d='b');
     
-    // remove the first n characters or the last n characters, or both
-    // @d: 'l' or 'L' for left, 'r' or 'R' for right, otherwise for both sides
+    // remove @n characters at the left or right side, or both sides
     fastring& trim(size_t n, char d='b');
 
     fastring& trim(int n, char d='b') {
         return this->trim((size_t)n, d);
     }
 
-    // the same as trim
-    template<typename ...X>
-    fastring& strip(X&& ...x) {
-        return this->trim(std::forward<X>(x)...);
-    }
-
-    // replace substring @sub (len: @n) with @to (len: @m)
-    // try @t times at most
+    // replace @sub with @to
+    // @t: times, unlimited by default
     fastring& replace(const char* sub, size_t n, const char* to, size_t m, size_t t=0);
 
     fastring& replace(const char* sub, const char* to, size_t t=0) {
@@ -434,6 +381,9 @@ class __coapi fastring : public fast::stream {
     fastring& replace(const fastring& sub, const fastring& to, size_t t=0) {
         return this->replace(sub.data(), sub.size(), to.data(), to.size(), t);
     }
+
+    fastring& escape();
+    fastring& unescape();
 
     fastring& tolower();
     fastring& toupper();
@@ -458,7 +408,6 @@ class __coapi fastring : public fast::stream {
         return fastring();
     }
 
-    // find char @c
     size_t find(char c) const {
         if (!this->empty()) {
             char* const p = (char*) memchr(_p, c, _size);
@@ -467,7 +416,6 @@ class __coapi fastring : public fast::stream {
         return npos;
     }
 
-    // find char @c from @pos
     size_t find(char c, size_t pos) const {
         if (pos < _size) {
             char* const p = (char*) memchr(_p + pos, c, _size - pos);
@@ -476,7 +424,7 @@ class __coapi fastring : public fast::stream {
         return npos;
     }
 
-    // find char @c in [pos, pos + len)
+    // find char in substr(pos, len)
     size_t find(char c, size_t pos, size_t len) const {
         if (pos < _size) {
             const size_t n = _size - pos;
@@ -486,52 +434,46 @@ class __coapi fastring : public fast::stream {
         return npos;
     }
 
-    // find sub string @s
     size_t find(const char* s) const {
-        char* const p = str::memmem(_p, _size, s, strlen(s));
+        char* const p = co::memmem(_p, _size, s, strlen(s));
         return p ? p - _p : npos;
     }
 
     // find @s (length: @n) from @pos
     size_t find(const char* s, size_t pos, size_t n) const {
         if (pos < _size) {
-            char* const p = str::memmem(_p + pos, _size - pos, s, n);
+            char* const p = co::memmem(_p + pos, _size - pos, s, n);
             return p ? p - _p : npos;
         }
         return npos;
     }
 
-    // find @s from @pos
     size_t find(const char* s, size_t pos) const {
         return this->find(s, pos, strlen(s));
     }
 
-    // find @s from @pos
     size_t find(const fastring& s, size_t pos=0) const {
         return this->find(s.data(), pos, s.size());
     }
 
-    // find @s from @pos
     size_t find(const std::string& s, size_t pos=0) const {
         return this->find(s.data(), pos, s.size());
     }
 
-    // find @s (ignore the case)
     size_t ifind(const char* s) const {
-        char* const p = str::memimem(_p, _size, s, strlen(s));
+        char* const p = co::memimem(_p, _size, s, strlen(s));
         return p ? p - _p : npos;
     }
 
     // find @s (length: @n) from @pos (ignore the case)
     size_t ifind(const char* s, size_t pos, size_t n) const {
         if (pos < _size) {
-            char* const p = str::memimem(_p + pos, _size - pos, s, n);
+            char* const p = co::memimem(_p + pos, _size - pos, s, n);
             return p ? p - _p : npos;
         }
         return npos;
     }
 
-    // find @s from @pos (ignore the case)
     size_t ifind(const char* s, size_t pos) const {
         return this->ifind(s, pos, strlen(s));
     }
@@ -546,28 +488,24 @@ class __coapi fastring : public fast::stream {
         return this->ifind(s.data(), pos, s.size());
     }
 
-    // find char @c from @pos (ignore the case)
     size_t ifind(char c, size_t pos=0) const {
         return this->ifind(&c, pos, 1);
     }
 
-    // reverse find char @c
     size_t rfind(char c) const {
-        char* const p = str::memrchr(_p, c, _size);
+        char* const p = co::memrchr(_p, c, _size);
         return p ? p - _p : npos;
     }
 
-    // reverse find char @c from @pos
     size_t rfind(char c, size_t pos) const {
-        char* const p = str::memrchr(_p, c, pos < _size ? pos + 1 : _size);
+        char* const p = co::memrchr(_p, c, pos < _size ? pos + 1 : _size);
         return p ? p - _p : npos;
     }
 
-    // reverse find sub string @s
     size_t rfind(const char* s) const {
         const size_t n = strlen(s);
         if (n > 0) {
-            char* const p = str::memrmem(_p, _size, s, n);
+            char* const p = co::memrmem(_p, _size, s, n);
             return p ? p - _p : npos;
         }
         return _size;
@@ -576,23 +514,20 @@ class __coapi fastring : public fast::stream {
     // reverse find @s (length: @n) from @pos
     size_t rfind(const char* s, size_t pos, size_t n) const {
         if (n > 0) {
-            char* const p = str::memrmem(_p, pos >= _size ? _size : pos + 1, s, n);
+            char* const p = co::memrmem(_p, pos >= _size ? _size : pos + 1, s, n);
             return p ? p - _p : npos;
         }
         return pos >= _size ? _size : pos;
     }
 
-    // reverse find @s from @pos
     size_t rfind(const char* s, size_t pos) const {
         return this->rfind(s, pos, strlen(s));
     }
 
-    // reverse find @s from @pos
     size_t rfind(const fastring& s, size_t pos=npos) const {
         return this->rfind(s.data(), pos, s.size());
     }
 
-    // reverse find @s from @pos
     size_t rfind(const std::string& s, size_t pos=npos) const {
         return this->rfind(s.data(), pos, s.size());
     }
@@ -600,17 +535,14 @@ class __coapi fastring : public fast::stream {
     // find first char in @s (length: @n) from @pos
     size_t find_first_of(const char* s, size_t pos, size_t n) const;
 
-    // find first char in @s from @pos
     size_t find_first_of(const char* s, size_t pos=0) const {
         return this->find_first_of(s, pos, strlen(s));
     }
 
-    // find first char in @s from @pos
     size_t find_first_of(const fastring& s, size_t pos=0) const {
         return this->find_first_of(s.data(), pos, s.size());
     }
 
-    // find first char in @s from @pos
     size_t find_first_of(const std::string& s, size_t pos=0) const {
         return this->find_first_of(s.data(), pos, s.size());
     }
@@ -618,74 +550,55 @@ class __coapi fastring : public fast::stream {
     // find first char not in @s (length: @n) from @pos
     size_t find_first_not_of(const char* s, size_t pos, size_t n) const;
 
-    // find first char not in @s from @pos
     size_t find_first_not_of(const char* s, size_t pos=0) const {
         return this->find_first_not_of(s, pos, strlen(s));
     }
 
-    // find first char not in @s from @pos
     size_t find_first_not_of(const fastring& s, size_t pos=0) const {
         return this->find_first_not_of(s.data(), pos, s.size());
     }
 
-    // find first char not in @s from @pos
     size_t find_first_not_of(const std::string& s, size_t pos=0) const {
         return this->find_first_not_of(s.data(), pos, s.size());
     }
 
-    // find first char not equal to @c
     size_t find_first_not_of(char c, size_t pos=0) const;
 
-    // find last char in @s (length: @n) from @pos
     size_t find_last_of(const char* s, size_t pos, size_t n) const;
 
-    // find last char in @s from @pos
     size_t find_last_of(const char* s, size_t pos=npos) const {
         return this->find_last_of(s, pos, strlen(s));
     }
 
-    // find last char in @s from @pos
     size_t find_last_of(const fastring& s, size_t pos=npos) const {
         return this->find_last_of(s.data(), pos, s.size());
     }
 
-    // find last char in @s from @pos
     size_t find_last_of(const std::string& s, size_t pos=npos) const {
         return this->find_last_of(s.data(), pos, s.size());
     }
 
-    // find last char not in @s (length: @n) from @pos
     size_t find_last_not_of(const char* s, size_t pos, size_t n) const;
 
-    // find last char not in @s from @pos
     size_t find_last_not_of(const char* s, size_t pos=npos) const {
         return this->find_last_not_of(s, pos, strlen(s));
     }
 
-    // find last char not in @s from @pos
     size_t find_last_not_of(const fastring& s, size_t pos=npos) const {
         return this->find_last_not_of(s.data(), pos, s.size());
     }
 
-    // find last char not in @s from @pos
     size_t find_last_not_of(const std::string& s, size_t pos=npos) const {
         return this->find_last_not_of(s.data(), pos, s.size());
     }
 
-    // find last char not equal to @c
     size_t find_last_not_of(char c, size_t pos=npos) const;
-
-    // * matches 0 or more characters
-    // ? matches exactly one character
-    bool match(const char* pattern) const {
-        return str::match(_p, _size, pattern, strlen(pattern));
-    }
 
     void shrink() {
         if (_size + 1 < _cap) this->swap(fastring(*this));
     }
 
-  private:
+private:
     fastring& _assign(const void* s, size_t n) {
         _size = n;
         if (n > 0) {
@@ -872,27 +785,7 @@ namespace std {
 template<>
 struct hash<fastring> {
     size_t operator()(const fastring& s) const {
-        return murmur_hash(s.data(), s.size());
+        return co::murmur_hash(s.data(), s.size());
     }
 };
 } // std
-
-class anystr {
-  public:
-    constexpr anystr() noexcept : _s(""), _n(0) {}
-    constexpr anystr(const char* s, size_t n) noexcept : _s(s), _n(n) {}
-
-    // modern compilers may do strlen for string literals at compile time,
-    // see https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
-    anystr(const char* s) noexcept : _s(s), _n(strlen(s)) {}
-
-    anystr(const std::string& s) noexcept : _s(s.data()), _n(s.size()) {}
-    anystr(const fastring& s) noexcept : _s(s.data()), _n(s.size()) {}
-
-    constexpr const char* data() const noexcept { return _s; }
-    constexpr size_t size() const noexcept { return _n; }
-
-  private:
-    const char* const _s;
-    const size_t _n;
-};

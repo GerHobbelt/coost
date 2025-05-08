@@ -716,7 +716,7 @@ fastream& Json::_json2str(fastream& fs, bool debug, int mdp) const {
         fs << _h->b;
         break;
       case t_double:
-        fs << dp::_n(_h->d, mdp);
+        fs << co::dp::_n(_h->d, mdp);
         break;
     }
 

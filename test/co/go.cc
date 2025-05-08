@@ -1,4 +1,5 @@
 #include "co/co.h"
+#include "co/flag.h"
 #include "co/cout.h"
 
 void f0() {
@@ -22,8 +23,7 @@ void f4(int a, int b) {
     co::print("f4(", a, ',', b, ")");
 }
 
-class T {
-  public:
+struct T {
     T() = default;
     ~T() = default;
 

@@ -53,30 +53,6 @@ typedef uint64_t uint64;
 #endif
 #endif
 
-#ifndef PP_STRIFY
-#define _PP_STRIFY(x) #x
-#define PP_STRIFY(x) _PP_STRIFY(x)
-#endif
-
-#ifndef PP_CONCAT
-#define _PP_CONCAT(x, y) x##y
-#define PP_CONCAT(x, y) _PP_CONCAT(x, y)
-#endif
-
-// generated from config.h.in
-#include "config.h"
-
-// __coapi: export symbols in shared library (libco.so or co.dll)
-#if COOST_SHARED > 0
-  #ifdef _WIN32
-    #ifdef BUILDING_CO_SHARED
-      #define __coapi __declspec(dllexport)
-    #else
-      #define __coapi __declspec(dllimport)
-    #endif
-  #else
-    #define __coapi __attribute__((visibility("default")))
-  #endif
-#else
-  #define __coapi
+#ifndef L1_CACHE_LINE_SIZE 
+#define L1_CACHE_LINE_SIZE 64
 #endif

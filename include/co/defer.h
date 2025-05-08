@@ -25,4 +25,4 @@ inline Defer<F> make_defer(F&& f) noexcept {
 } // xx
 } // co
 
-#define defer(e) auto _co_defer_name = co::xx::make_defer([&](){ e; })
+#define defer(e) auto _co_defer_name = co::xx::make_defer([&](){ e; });

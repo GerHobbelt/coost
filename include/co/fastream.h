@@ -1,16 +1,15 @@
 #pragma once
 
-#include "fast.h"
+#include "stream.h"
 #include "fastring.h"
 
-class __coapi fastream : public fast::stream {
-  public:
+struct fastream : co::stream {
     constexpr fastream() noexcept
-        : fast::stream() {
+        : co::stream() {
     }
     
     explicit fastream(size_t cap)
-        : fast::stream(cap) {
+        : co::stream(cap) {
     }
 
     ~fastream() = default;
@@ -19,11 +18,11 @@ class __coapi fastream : public fast::stream {
     void operator=(const fastream&) = delete;
 
     fastream(fastream&& fs) noexcept
-        : fast::stream(std::move(fs)) {
+        : co::stream(std::move(fs)) {
     }
 
     fastream& operator=(fastream&& fs) {
-        return (fastream&) fast::stream::operator=(std::move(fs));
+        return (fastream&) co::stream::operator=(std::move(fs));
     }
 
     fastring str() const {
@@ -31,19 +30,17 @@ class __coapi fastream : public fast::stream {
     }
 
     fastream& append(const void* p, size_t n) {
-        return (fastream&) fast::stream::append(p, n);
+        return (fastream&) co::stream::append(p, n);
     }
 
-    // like append(), but will not check if p overlaps with the internal memory
     fastream& append_nomchk(const void* p, size_t n) {
-        return (fastream&) fast::stream::append_nomchk(p, n);
+        return (fastream&) co::stream::append_nomchk(p, n);
     }
 
     fastream& append(const char* s) {
         return this->append(s, strlen(s));
     }
 
-    // like append(), but will not check if s overlaps with the internal memory
     fastream& append_nomchk(const char* s) {
         return this->append_nomchk(s, strlen(s));
     }
@@ -56,7 +53,6 @@ class __coapi fastream : public fast::stream {
         return this->append_nomchk(s.data(), s.size());
     }
 
-    // append the fastream itself is ok
     fastream& append(const fastream& s) {
         if (&s != this) return this->append_nomchk(s.data(), s.size());
         this->reserve((_size << 1) + !!_size);
@@ -65,13 +61,12 @@ class __coapi fastream : public fast::stream {
         return *this;
     }
 
-    // append n characters
     fastream& append(size_t n, char c) {
-        return (fastream&) fast::stream::append(n, c);
+        return (fastream&) co::stream::append(n, c);
     }
 
     fastream& append(char c) {
-        return (fastream&) fast::stream::append(c);
+        return (fastream&) co::stream::append(c);
     }
 
     fastream& append(signed char c) {
@@ -82,17 +77,14 @@ class __coapi fastream : public fast::stream {
         return this->append((char)c);
     }
 
-    // append binary data of uint16 (2 bytes)
     fastream& append(uint16 v) {
         return this->append_nomchk(&v, sizeof(v));
     }
 
-    // append binary data of uint32 (4 bytes)
     fastream& append(uint32 v) {
         return this->append_nomchk(&v, sizeof(v));
     }
 
-    // append binary data of uint64 (8 bytes)
     fastream& append(uint64 v) {
         return this->append_nomchk(&v, sizeof(v));
     }
@@ -109,11 +101,11 @@ class __coapi fastream : public fast::stream {
     }
 
     fastream& operator<<(bool v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(char v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(signed char v) {
@@ -125,57 +117,57 @@ class __coapi fastream : public fast::stream {
     }
 
     fastream& operator<<(short v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(unsigned short v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(int v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(unsigned int v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(long v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(unsigned long v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(long long v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(unsigned long long v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(double v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(float v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     // float point number with max decimal places set
-    //   - fastream() << dp::_2(3.1415);  // -> 3.14
-    fastream& operator<<(const dp::_fpt& v) {
-        return (fastream&) fast::stream::operator<<(v);
+    //   - fastream() << co::dp::_2(3.1415);  // -> 3.14
+    fastream& operator<<(const co::dp::D& v) {
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(const void* v) {
-        return (fastream&) fast::stream::operator<<(v);
+        return (fastream&) co::stream::operator<<(v);
     }
 
     fastream& operator<<(std::nullptr_t) {
-        return (fastream&) fast::stream::operator<<(nullptr);
+        return (fastream&) co::stream::operator<<(nullptr);
     }
 
     fastream& operator<<(const char* s) {

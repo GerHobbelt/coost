@@ -1,5 +1,6 @@
 #include "co/path.h"
-#include "ctype.h"
+#include "co/search.h"
+#include <ctype.h>
 
 namespace path {
 
@@ -12,12 +13,12 @@ fastring clean(const char* s, size_t n) {
     size_t p = rooted;      // index for string r
     size_t dotdot = rooted; // index where .. must stop
 
-  #ifdef _WIN32
+#ifdef _WIN32
     if (!rooted && n > 2 && s[1] == ':' && s[2] == '/' && ::isalpha(s[0])) {
         rooted = true;
         beg = p = dotdot = 3;
     }
-  #endif
+#endif
 
     for (size_t i = p; i < n;) {
         if (s[i] == '/' || (s[i] == '.' && (i+1 == n || s[i+1] == '/'))) {
@@ -59,13 +60,13 @@ fastring clean(const char* s, size_t n) {
 }
 
 std::pair<fastring, fastring> split(const char* s, size_t n) {
-  #ifdef _WIN32
+#ifdef _WIN32
     if (n == 2 && s[1] == ':' && ::isalpha(s[0])) {
         return std::make_pair(fastring(s, n), fastring());
     }
-  #endif
+#endif
  
-    const char* p = str::memrchr(s, '/', n) + 1;
+    const char* p = co::memrchr(s, '/', n) + 1;
     if (p != (char*)1) {
         const size_t m = p - s;
         return std::make_pair(fastring(s, m), fastring(p, n - m));
@@ -74,13 +75,13 @@ std::pair<fastring, fastring> split(const char* s, size_t n) {
 }
 
 fastring dir(const char* s, size_t n) {
-  #ifdef _WIN32
+#ifdef _WIN32
     if (n == 2 && s[1] == ':' && ::isalpha(s[0])) {
         return fastring(s, n);
     }
-  #endif
+#endif
  
-    const char* p = str::memrchr(s, '/', n);
+    const char* p = co::memrchr(s, '/', n);
     return p ? clean(fastring(s, p + 1 - s)): fastring(1, '.');
 }
 
@@ -92,11 +93,11 @@ fastring base(const char* s, size_t n) {
         if (s[p - 1] != '/') break;
     }
     if (p == 0) return fastring(1, '/');
-  #ifdef _WIN32
+#ifdef _WIN32
     if (p == 2 && s[1] == ':' && ::isalpha(s[0])) {
         return fastring(s, n > 3 ? 3 : n);
     }
-  #endif
+#endif
 
     size_t e = p;
     for (; p > 0; --p) {

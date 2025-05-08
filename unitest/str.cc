@@ -60,11 +60,6 @@ DEF_test(str) {
     DEF_case(replace) {
         EXPECT_EQ(str::replace("$@xx$@", "$@", "#"), "#xx#");
         EXPECT_EQ(str::replace("$@xx$@", "$@", "#", 1), "#xx$@");
-
-        fastring s("hello world");
-        EXPECT_EQ(str::replace(s, "l", "x"), "hexxo worxd");
-        EXPECT_EQ(str::replace(s, "o", "x"), "hellx wxrld");
-        EXPECT_EQ(str::replace(s, "o", "x", 1), "hellx world");
     }
 
     DEF_case(trim) {
@@ -109,42 +104,43 @@ DEF_test(str) {
         EXPECT_EQ(str::to_double("3.14159"), 3.14159);
 
         // convertion failed
-        EXPECT_EQ(str::to_bool("xxx"), false);
-        EXPECT_EQ(co::error(), EINVAL);
+        int e;
+        EXPECT_EQ(str::to_bool("xxx", &e), false);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_int32("12345678900"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_int32("-32g"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_int32("-3a2"), 0);
-        EXPECT_EQ(co::error(), EINVAL);
+        EXPECT_EQ(str::to_int32("12345678900", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_int32("-32g, &e"), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_int32("-3a2", &e), 0);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_int64("1234567890123456789000"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_int64("100000P"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_int64("1di8"), 0);
-        EXPECT_EQ(co::error(), EINVAL);
+        EXPECT_EQ(str::to_int64("1234567890123456789000", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_int64("100000P", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_int64("1di8", &e), 0);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_uint32("123456789000"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_uint32("32g"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_uint32("3g3"), 0);
-        EXPECT_EQ(co::error(), EINVAL);
+        EXPECT_EQ(str::to_uint32("123456789000", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_uint32("32g", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_uint32("3g3", &e), 0);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_uint64("1234567890123456789000"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_uint64("100000P"), 0);
-        EXPECT_EQ(co::error(), ERANGE);
-        EXPECT_EQ(str::to_uint64("12d8"), 0);
-        EXPECT_EQ(co::error(), EINVAL);
+        EXPECT_EQ(str::to_uint64("1234567890123456789000", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_uint64("100000P", &e), 0);
+        EXPECT_EQ(e, ERANGE);
+        EXPECT_EQ(str::to_uint64("12d8", &e), 0);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_double("3.141d59"), 0);
-        EXPECT_EQ(co::error(), EINVAL);
+        EXPECT_EQ(str::to_double("3.141d59", &e), 0);
+        EXPECT_EQ(e, EINVAL);
 
-        EXPECT_EQ(str::to_uint32("32"), 32);
-        EXPECT_EQ(co::error(), 0);
+        EXPECT_EQ(str::to_uint32("32", &e), 32);
+        EXPECT_EQ(e, 0);
     }
 
     DEF_case(from) {
@@ -153,64 +149,6 @@ DEF_test(str) {
         EXPECT_EQ(str::from(true), "true");
         EXPECT_EQ(str::from(1024), "1024");
         EXPECT_EQ(str::from(-1024), "-1024");
-    }
-
-    DEF_case(dbg) {
-        {
-            std::vector<fastring> v { "xx", "yy" };
-            co::vector<fastring> cv { "x\r", "y\n" };
-            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
-            EXPECT_EQ(str::dbg(cv), "[\"x\\r\",\"y\\n\"]");
-        }
-        {
-            std::list<fastring> v { "xx", "yy" };
-            co::list<fastring> cv { "xx", "yy" };
-            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
-            EXPECT_EQ(str::dbg(cv), "[\"xx\",\"yy\"]");
-        }
-        {
-            std::deque<fastring> v { "xx", "yy" };
-            co::deque<fastring> cv { "xx", "yy" };
-            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
-            EXPECT_EQ(str::dbg(cv), "[\"xx\",\"yy\"]");
-        }
-        {
-            std::set<int> s { 7, 0, 3 };
-            co::set<int> cs { 7, 0, 3 };
-            EXPECT_EQ(str::dbg(s),  "{0,3,7}");
-            EXPECT_EQ(str::dbg(cs), "{0,3,7}");
-
-            std::map<int, int> m { {1, 1}, {2, 2}, {3, 3} };
-            co::map<int, int> cm { {1, 1}, {2, 2}, {3, 3} };
-            EXPECT_EQ(str::dbg(m),  "{1:1,2:2,3:3}");
-            EXPECT_EQ(str::dbg(cm), "{1:1,2:2,3:3}");
-
-            std::map<int, fastring> ms {
-                {1, "1"}, {2, "2"}, {3, "3"}
-            };
-            EXPECT_EQ(str::dbg(ms), "{1:\"1\",2:\"2\",3:\"3\"}");
-        }
-
-        co::vector<co::vector<int>> v = {
-            {1, 2, 3},
-            {6, 7, 8},
-        };
-        EXPECT_EQ(str::dbg(v), "[[1,2,3],[6,7,8]]");
-    }
-
-    DEF_case(cat) {
-        EXPECT_EQ(str::cat(), "");
-        EXPECT_EQ(str::cat(1, 2, 3), "123");
-        EXPECT_EQ(str::cat("hello", 1, 2, 3), "hello123");
-        EXPECT_EQ(str::cat("hello ", false), "hello false");
-        EXPECT_EQ(str::cat("hello ", true, ':', 999), "hello true:999");
-        fastring f("fff");
-        std::string s("sss");
-        const char* c = "ccc";
-        EXPECT_EQ(str::cat(f, s, c, 123), "fffsssccc123");
-
-        co::vector<int> v = { 1, 2, 3 };
-        EXPECT_EQ(str::cat(v), "[1,2,3]");
     }
 }
 

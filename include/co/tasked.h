@@ -5,21 +5,17 @@
 
 namespace co {
 
-/**
- * A timed task scheduler
- *   - All tasks will run in a single thread.
- */
-class __coapi Tasked {
-  public:
+// timed task scheduler
+struct tasked {
     typedef std::function<void()> F;
 
-    Tasked();
-    ~Tasked();
+    tasked();
+    ~tasked();
 
-    Tasked(const Tasked&) = delete;
-    void operator=(const Tasked&) = delete;
+    tasked(const tasked&) = delete;
+    void operator=(const tasked&) = delete;
 
-    Tasked(Tasked&& t) : _p(t._p) {
+    tasked(tasked&& t) : _p(t._p) {
         t._p = 0;
     }
 
@@ -60,7 +56,6 @@ class __coapi Tasked {
     // stop this task scheduler
     void stop();
 
-  private:
     void* _p;
 };
 

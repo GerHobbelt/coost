@@ -1,49 +1,76 @@
 #include "co/flag.h"
 #include "co/cout.h"
+#include "co/defer.h"
 #include "co/fs.h"
-#include "co/os.h"
-#include "co/str.h"
 #include "co/stl.h"
+#include "co/str.h"
+#include "co/thread.h"
 
-DEF_string(help, "", ">>.help info");
-DEF_string(config, "", ">>.path of config file", conf);
-DEF_string(version, "", ">>.version of the program");
-DEF_bool(mkconf, false, ">>.generate config file");
-DEF_bool(daemon, false, ">>#0 run program as a daemon");
+DEF_mlstr(help, "@c 显示帮助信息", "@c show help info");
+DEF_mlstr(version, "@c 显示版本信息", "@c show version");
+DEF_mlstr(mkconf, "@c 生成配置文件", "@c generate config file");
+DEF_mlstr(e_range, "超出数值范围", "out of range");
+DEF_mlstr(e_inval, "无效数值", "invalid value");
+DEF_mlstr(e_not_found, "未找到flag", "flag not found");
+DEF_mlstr(e_name_used, "已用于", "already used in");
+DEF_mlstr(e_redef, "重定义于", "redefined in");
+DEF_mlstr(e_multi_alias, "不允许多个别名", "multiple aliases are not allowed");
+DEF_mlstr(e_alias_conflict, "别名冲突", "alias name conflict");
+DEF_mlstr(e_no_value, "值未设置", "value not set");
+DEF_mlstr(e_open_failed, "打开文件失败", "open file failed");
+DEF_mlstr(e_conf, "无效配置", "invalid config");
+DEF_mlstr(e_quote, "引号缺失", "quote missing");
+DEF_mlstr(e_badstr, "无效字符串值", "invalid string value");
+
+DEF_bool(help, false, MLS_help);
+DEF_bool(version, false, MLS_version);
+DEF_bool(mkconf, false, MLS_mkconf);
+
+static bool g_command_line_only = false;
 
 namespace flag {
 namespace xx {
 
 struct Flag;
-
 struct Mod {
     Mod() = default;
     ~Mod() = default;
 
-    void add_flag(
-        char iden, const char* name, const char* value, const char* help,
-        const char* file, int line, void* addr, const char* alias
-    );
+    typedef void(*parse_cb_t)();
 
+    void add_flag(Flag* f);
     Flag* find_flag(const char* name);
 
+    fastring alias(const char* name, const char* new_name);
+    fastring set_flag_attr(const char* name, _attr_t a);
     fastring set_flag_value(const char* name, const fastring& value);
     fastring set_bool_flags(const char* name);
-    fastring alias(const char* name, const char* new_name);
 
-    void print_flags();
-    void print_all_flags();
-    void print_help();
+    void set_config_path(const char* path) { _config_path = path; }
+    void set_version(const char* ver) { _version = ver; }
+    void add_parse_cb(parse_cb_t cb, char c) { _cbs[c != 'a'].push_back(cb); }
+    void run_parse_cb(char c) {
+        auto& cbs = _cbs[c != 'a'];
+        if (!cbs.empty()) {
+            for (auto& cb : cbs) cb();
+            co::vector<parse_cb_t>().swap(cbs);
+        }
+    }
 
+    void print_help(const fastring& exe);
     void make_config(const fastring& exe);
     void parse_config(const fastring& config);
     co::vector<fastring> parse_commandline(int argc, char** argv);
+
     co::vector<fastring> analyze_args(
         const co::vector<fastring>& args, co::map<fastring, fastring>& kv,
         co::vector<fastring>& bools
     );
 
-    co::map<const char*, Flag*> flags;
+    co::map<const char*, Flag*> _flags;
+    co::vector<parse_cb_t> _cbs[2];
+    fastring _config_path;
+    fastring _version;
 };
 
 static Mod* g_mod;
@@ -53,91 +80,84 @@ inline Mod& mod() {
 }
 
 struct Flag {
-    Flag(char iden, const char* name, const char* alias, const char* value,
-         const char* help, const char* file, int line, void* addr);
-
-    fastring set_value(const fastring& v);
+    const char* get_help() const;
+    const char* set_value(const fastring& v);
     fastring get_value() const;
-    void print() const;
-    const char* type() const;
+    void print(size_t m, size_t n) const;
 
     char iden;
-    char lv;            // level: 0-9
-    bool inco;          // flag inside co (comment starts with >>)
+    char attr;
+    bool mls;  // multi-language support
     const char* name;
-    const char* alias;  // alias for this flag
-    const char* value;  // default value
-    const char* help;   // help info
-    const char* file;   // file where the flag is defined
-    int line;           // line of the file where the flag is defined
-    void* addr;         // point to the flag variable
+    const char* alias;
+    const char* value; // default value
+    union {
+        const char* help;
+        const co::mlstr* mlp;
+    };
+    const char* file;
+    int line;
+    void* addr;
 };
 
-Flag::Flag(
-    char iden, const char* name, const char* alias, const char* value, 
-    const char* help, const char* file, int line, void* addr
-) : iden(iden), lv('5'), inco(false), name(name), alias(alias), value(value),
-    help(help), file(file), line(line), addr(addr) {
-    if (help[0] == '>' && help[1] == '>') { /* flag defined in co */
-        this->inco = true;
-        this->help += 2;
+const char* Flag::get_help() const {
+    const char* h = !mls ? help : mlp->value();
+    if (*h == '@') {
+        const char c = *(h + 1);
+        if (c == 'd' || c == 'c' || c == 'h') {
+            h += 2;
+            while (*h && *h == ' ') ++h;
+        }
     }
-
-    // get level(0-9) at the beginning of help
-    const char* const h = this->help;
-    if (h[0] == '#' && '0' <= h[1] && h[1] <= '9' && (h[2] == ' ' || h[2] == '\0')) {
-        lv = h[1];
-        this->help += 2 + !!h[2];
-    }
+    return h;
 }
 
-fastring Flag::set_value(const fastring& v) {
+const char* Flag::set_value(const fastring& v) {
+    int err = 0;
+    const char* s = v.c_str();
     switch (this->iden) {
-      case 's':
+    case 's':
         *static_cast<fastring*>(this->addr) = v;
-        return fastring();
-      case 'b':
-        *static_cast<bool*>(this->addr) = str::to_bool(v);
         break;
-      case 'i':
-        *static_cast<int32*>(this->addr) = str::to_int32(v);
+    case 'b':
+        *static_cast<bool*>(this->addr) = str::to_bool(s, &err);
         break;
-      case 'u':
-        *static_cast<uint32*>(this->addr) = str::to_uint32(v);
+    case 'i':
+        *static_cast<int32*>(this->addr) = str::to_int32(s, &err);
         break;
-      case 'I':
-        *static_cast<int64*>(this->addr) = str::to_int64(v);
+    case 'u':
+        *static_cast<uint32*>(this->addr) = str::to_uint32(s, &err);
         break;
-      case 'U':
-        *static_cast<uint64*>(this->addr) = str::to_uint64(v);
+    case 'I':
+        *static_cast<int64*>(this->addr) = str::to_int64(s, &err);
         break;
-      case 'd':
-        *static_cast<double*>(this->addr) = str::to_double(v);
+    case 'U':
+        *static_cast<uint64*>(this->addr) = str::to_uint64(s, &err);
         break;
-      default:
-        return "unknown flag type";
+    case 'd':
+        *static_cast<double*>(this->addr) = str::to_double(s, &err);
+        break;
     }
 
-    switch (co::error()) {
-      case 0:
-        return fastring();
-      case ERANGE:
-        return "out of range";
-      default:
-        return "invalid value";
+    switch (err) {
+    case 0:
+        return "";
+    case ERANGE:
+        return MLS_e_range.value();
+    default:
+        return MLS_e_inval.value();
     }
 }
 
 template<typename T>
 fastring int2str(T t) {
-    if ((0 <= t && t <= 8192) || (t < 0 && t >= -8192)) return str::from(t);
-
     int i = -1;
-    while (t != 0 && (t & 1023) == 0) {
-        t >>= 10;
-        if (++i >= 4) break;
+    if (t > 8192 || (t < 0 && t < -8192)) {
+        while (t != 0 && (t & 1023) == 0) {
+            t >>= 10;
+            if (++i == 4) break;
+        }
     }
-
     fastring s = str::from(t);
     if (i >= 0) s.append("kmgtp"[i]);
     return s;
@@ -145,102 +165,126 @@ fastring int2str(T t) {
 
 fastring Flag::get_value() const {
     switch (this->iden) {
-      case 's':
+    case 's':
         return *static_cast<fastring*>(this->addr);
-      case 'b':
+    case 'b':
         return str::from(*static_cast<bool*>(this->addr));
-      case 'i':
+    case 'i':
         return int2str(*static_cast<int32*>(this->addr));
-      case 'u':
+    case 'u':
         return int2str(*static_cast<uint32*>(this->addr));
-      case 'I':
+    case 'I':
         return int2str(*static_cast<int64*>(this->addr));
-      case 'U':
+    case 'U':
         return int2str(*static_cast<uint64*>(this->addr));
-      case 'd':
+    case 'd':
         return str::from(*static_cast<double*>(this->addr));
-      default:
-        return "unknown flag type";
+    default:
+        return fastring();
     }
 }
 
-inline const char* Flag::type() const {
-    switch (this->iden) {
-      case 's': return "string";
-      case 'b': return "bool";
-      case 'i': return "int32";
-      case 'u': return "uint32";
-      case 'I': return "int64";
-      case 'U': return "uint64";
-      case 'd': return "double";
-      default:  return "unknown";
+void Flag::print(size_t m, size_t n) const {
+    if (attr == flag::attr_hidden) return;
+
+    auto& f = *this;
+    co::cout(color::bold, color::green, "  -", f.name);
+    if (*f.alias) co::cout(',', f.alias);
+    co::cout(color::deflt).flush();
+
+    const char* h = f.get_help();
+    if (n < m) co::cout(fastring(m - n, ' '));
+    if (n <= m) {
+        co::cout(
+            color::bold, color::yellow, "  ", f.iden, "  ",
+            color::deflt, h,
+            color::bold, color::blue, "  (", f.get_value(), ')', color::deflt, '\n'
+        );
+    } else {
+        co::cout(
+            '\n', fastring(m, ' '),
+            color::bold, color::yellow, "  ", f.iden, "  ",
+            color::deflt, h,
+            color::bold, color::blue, "  (", f.get_value(), ')', color::deflt, '\n'
+        );
     }
 }
 
-inline void Flag::print() const {
-    cout << color::green << "    -" << this->name;
-    if (*this->alias) cout << ", " << this->alias;
-    cout.flush();
-    cout << color::blue << "  " << this->help << '\n' << color::deflt
-         << "\ttype: " << this->type()
-         << "\t  default: " << this->value
-         << "\n\tfrom: " << this->file
-         << endl;
-}
-
-void Mod::add_flag(
-    char iden, const char* name, const char* value, const char* help, 
-    const char* file, int line, void* addr, const char* alias) {
-    auto f = co::_make_static<Flag>(iden, name, alias, value, help, file, line, addr);
-    auto r = flags.emplace(name, f);
+void Mod::add_flag(Flag* f) {
+    auto r = _flags.emplace(f->name, f);
     if (!r.second) {
-        cout << "multiple definitions of flag: " << name << ", from "
-             << r.first->second->file << " and " << file << endl;
+        auto& g = r.first->second;
+        co::cout(
+            "flag ", f->name, ' ', MLS_e_redef, ": ", 
+            g->file, ':', g->line, ", ", f->file, ':', f->line, co::endl
+        );
         ::exit(0);
     }
 
-    if (alias[0]) {
-        auto v = str::split(alias, ',');
-        for (auto& x : v) {
-            x.trim();
-            const size_t n = x.size() + 1;
-            char* s = (char*) co::_salloc(n);
-            memcpy(s, x.c_str(), n);
-            auto r = flags.emplace(s, f);
-            if (!r.second) {
-                cout << "alias " << name << " as " << x << " failed, flag " << x
-                     << " already exists in " << r.first->second->file << endl;
-                ::exit(0);
-            }
+    const char* const a = f->alias;
+    if (*a) {
+        if (strchr(a, ',') != NULL) {
+            co::cout(MLS_e_multi_alias, ", ", f->file, ':', f->line, co::endl);
+            ::exit(0);
+        }
+        auto r = _flags.emplace(a, f);
+        if (!r.second) {
+            auto& g = r.first->second;
+            co::cout(
+                MLS_e_alias_conflict, ": ", f->file, ':', f->line, ", ",
+                g->file, ':', g->line, co::endl
+            );
+            ::exit(0);
         }
     }
 }
 
 inline Flag* Mod::find_flag(const char* name) {
-    auto it = flags.find(name);
-    return it != flags.end() ? it->second : NULL;
+    auto it = _flags.find(name);
+    return it != _flags.end() ? it->second : NULL;
 }
 
 fastring Mod::alias(const char* name, const char* new_name) {
     fastring e;
     auto f = this->find_flag(name);
     if (!f) {
-        e << "flag not found: " << name;
+        e.cat(MLS_e_not_found, ": ", name);
         return e;
     }
 
-    if (!*new_name) {
-        e << "new name is empty";
+    if (!new_name || !*new_name) {
+        if (*f->alias) {
+            _flags.erase(f->alias);
+            f->alias = "";
+        }
         return e;
     }
 
-    auto r = flags.emplace(new_name, f);
+    if (strcmp(f->alias, new_name) == 0) return e;
+
+    auto r = _flags.emplace(new_name, f);
     if (!r.second) {
-        e << "name already exists: " << new_name;
+        auto& g = r.first->second;
+        e.cat(
+            new_name, ' ', MLS_e_name_used, " flag ", g->name,
+            '(', g->file, ':', g->line, ')'
+        );
         return e;
     }
 
+    if (*f->alias) _flags.erase(f->alias);
     f->alias = new_name;
+    return e;
+}
+
+fastring Mod::set_flag_attr(const char* name, _attr_t a) {
+    fastring e;
+    Flag* f = this->find_flag(name);
+    if (f) {
+        f->attr = a;
+    } else {
+        e.cat(MLS_e_not_found, ": ", name);
+    }
     return e;
 }
 
@@ -248,10 +292,10 @@ fastring Mod::set_flag_value(const char* name, const fastring& value) {
     fastring e;
     Flag* f = this->find_flag(name);
     if (f) {
-        e = f->set_value(value);
-        if (!e.empty()) e << ": " << value;
+        const char* s = f->set_value(value);
+        if (*s) e.cat(s, ": ", value);
     } else {
-        e << "flag not defined: " << name;
+        e.cat(MLS_e_not_found, ": ", name);
     }
     return e;
 }
@@ -264,14 +308,14 @@ fastring Mod::set_bool_flags(const char* name) {
         if (f->iden == 'b') {
             *static_cast<bool*>(f->addr) = true;
         } else {
-            e << "value not set for non-bool flag: " << name;
+            e.cat("flag ", name, ", ", MLS_e_no_value);
         }
         return e;
     }
 
     const size_t n = strlen(name);
     if (n == 1) {
-        e << "undefined bool flag: " << name;
+        e.cat(MLS_e_not_found, ": ", name);
         return e;
     }
 
@@ -279,75 +323,87 @@ fastring Mod::set_bool_flags(const char* name) {
     for (size_t i = 0; i < n; ++i) {
         sub[0] = name[i];
         f = this->find_flag(sub);
-        if (f) {
-            if (f->iden == 'b') {
-                *static_cast<bool*>(f->addr) = true;
-                continue;
-            }
-            e << '-' << sub[0] << " is not bool in -" << name;
-            return e;
+        if (f && f->iden == 'b') {
+            *static_cast<bool*>(f->addr) = true;
+            continue;
         }
-        e << "undefined bool flag -" << sub[0] << " in -" << name;
+        e.cat(MLS_e_not_found, ": ", name);
         return e;
     }
 
     return e;
 }
 
-// print flags not in co
-void Mod::print_flags() {
-    bool the_first_one = true;
-    for (auto it = flags.begin(); it != flags.end(); ++it) {
-        const Flag& f = *it->second;
-        if (!f.inco && *f.help && (!*f.alias || strcmp(it->first, f.name) == 0)) {
-            if (the_first_one) {
-                the_first_one = false;
-                cout << "flags:\n";
-            }
-            f.print();
+void Mod::print_help(const fastring& exe) {
+    co::cout(color::bold, "usage:  ", color::cyan, exe);
+    if (!g_command_line_only) co::cout(" [", exe, ".conf]");
+    co::cout(" [flag [value]]...\n\n", color::deflt);
+
+    size_t m = 0;
+    co::vector<size_t> len;
+    len.reserve(_flags.size());
+
+    Flag* ff[3];
+    size_t nn[3];
+    for (auto it = _flags.begin(); it != _flags.end(); ++it) {
+        auto& f = *(it->second);
+        size_t n = strlen(f.name) + 3;
+        if (*f.alias) n += strlen(f.alias) + 1;
+        len.push_back(n);
+        if (n <= 21 && m < n) m = n;
+
+        if (f.addr == &FLG_help) {
+            ff[0] = &f;
+            nn[0] = n;
+        } else if (f.addr == &FLG_version) {
+            ff[1] = &f;
+            nn[1] = n;
+        } else if (f.addr == &FLG_mkconf) {
+            ff[2] = &f;
+            nn[2] = n;
         }
     }
-}
 
-void Mod::print_all_flags() {
-    cout << "flags:\n";
-    for (auto it = flags.begin(); it != flags.end(); ++it) {
-        const auto& f = *it->second;
-        if (*f.help && (!*f.alias || strcmp(it->first, f.name) == 0)) {
-            f.print();
-        }
+    co::cout(
+        color::bold, "flags:  -name[,alias]  type  comments  (default value)\n",
+        color::deflt
+    );
+
+    ff[0]->print(m, nn[0]);
+    ff[1]->print(m, nn[1]);
+    if (!g_command_line_only) ff[2]->print(m, nn[2]);
+    co::cout(co::endl);
+
+    int i = 0;
+    for (auto it = _flags.begin(); it != _flags.end(); ++it) {
+        const size_t n = len[i++];
+        auto& f = *(it->second);
+        if (&f == ff[0] || &f == ff[1] || &f == ff[2]) continue;
+        if (*f.alias && strcmp(it->first, f.name) != 0) continue;
+        f.print(m, n);
     }
-}
-
-inline void Mod::print_help() {
-    cout << "usage:  " << color::blue << "$exe [-flag] [value]\n" << color::deflt
-         << "\t" << "$exe -x -i 8k -s ok        # x=true, i=8192, s=\"ok\"\n"
-         << "\t" << "$exe --                    # print all flags\n"
-         << "\t" << "$exe -mkconf               # generate config file\n"
-         << "\t" << "$exe -conf xx.conf         # run with config file\n\n";
-
-    this->print_flags();
+    co::cout().flush();
 }
 
 // add quotes to string if necessary
-void format_str(fastring& s) {
-    const size_t a = s.find_first_of("\"'`#");
-    const size_t b = s.find("//");
-    if (a == s.npos && b == s.npos) return;
-
-    fastring r(std::move(s));
-    if (a == s.npos || !r.contains('"')) { s << '"' << r << '"'; return; }
-    if (!r.contains('\'')) { s << '\'' << r << '\''; return; }
-    s << "```" << r << "```";
+inline void format_str(fastring& s) {
+    if (s.find_first_of("\"'`#") != s.npos) {
+        fastring r(std::move(s));
+        if (!r.contains('"')) {
+            s << '"' << r << '"';
+        } else if (!r.contains('\'')) {
+            s << '\'' << r << '\'';
+        } else {
+            s << "```" << r << "```";
+        }
+    }
 }
 
 void Mod::make_config(const fastring& exe) {
-    // order flags by lv, file, line
-    co::map<int, co::map<const char*, co::map<int, Flag*>>> o;
-    for (auto it = flags.begin(); it != flags.end(); ++it) {
-        Flag* f = it->second;
-        if (f->help[0] == '.' || f->help[0] == '\0') continue; // ignore hidden flags.
-        o[f->lv][f->file][f->line] = f;
+    co::map<const char*, co::map<int, Flag*>> o;
+    for (auto it = _flags.begin(); it != _flags.end(); ++it) {
+        auto& f = *it->second;
+        if (f.attr == flag::attr_default) o[f.file][f.line] = &f;
     }
 
     fastring fname(exe);
@@ -356,37 +412,39 @@ void Mod::make_config(const fastring& exe) {
 
     fs::fstream f(fname.c_str(), 'w');
     if (!f) {
-        cout << "can't open config file: " << fname << endl;
+        co::cout(MLS_e_open_failed, ": ", fname, co::endl);
         return;
     }
 
     const int COMMENT_LINE_LEN = 72;
     f << fastring(COMMENT_LINE_LEN, '#') << '\n'
-      << "###  > # or // for comments\n"
-      << "###  > k,m,g,t,p (case insensitive, 1k for 1024, etc.)\n"
+      << "###  > # for comments\n"
+      << "###  > k,m,g,t,p (8k for 8192, etc.)\n"
       << fastring(COMMENT_LINE_LEN, '#') << "\n\n\n";
 
     for (auto it = o.begin(); it != o.end(); ++it) {
+        f << "#" << fastring(COMMENT_LINE_LEN - 1, '=') << '\n';
         const auto& x = it->second;
-        for (auto xit = x.begin(); xit != x.end(); ++xit) {
-            const auto& y = xit->second;
-            //f << "# >> " << str::replace(xit->first, "\\", "/") << '\n';
-            f << "#" << fastring(COMMENT_LINE_LEN - 1, '=') << '\n';
-            for (auto yit = y.begin(); yit != y.end(); ++yit) {
-                const Flag& flag = *yit->second;
+        for (auto kt = x.begin(); kt != x.end(); ++kt) {
+                auto& flag = *(kt->second);
                 fastring v = flag.get_value();
-                if (flag.iden == 's') format_str(v);
-                f << "# " << str::replace(flag.help, "\n", "\n# ") << '\n';
-                f << flag.name << " = " << v << "\n\n";
-            }
-            f << "\n";
+                if (flag.iden == 's') v.escape();
+                auto h = flag.get_help();
+                f << "# " << str::replace(h, "\n", "\n# ") << '\n'
+                  << flag.name << " = ";
+                if (!v.contains('\\')) {
+                    f << v << "\n\n";
+                } else {
+                    f << '"' << v << '"' << "\n\n";
+                }
         }
+        f << '\n';
     }
 
     f.flush();
 }
 
-// @kv:  for -a=b, or -a b, or a=b
+// @kv:  for -key value
 // @k:   for -a, -xyz
 // return non-flag elements (etc. hello, -8, -8k, -, --, --- ...)
 co::vector<fastring> Mod::analyze_args(
@@ -396,28 +454,8 @@ co::vector<fastring> Mod::analyze_args(
 
     for (size_t i = 0; i < args.size(); ++i) {
         const fastring& arg = args[i];
-        size_t bp = arg.find_first_not_of('-');
-        size_t ep = arg.find('=');
-
-        // @arg has only '-':  for -, --, --- ...
-        if (bp == arg.npos) {
-            res.push_back(arg);
-            continue;
-        }
-
-        if (ep <= bp) {
-            cout << "invalid parameter" << ": " << arg << endl;
-            ::exit(0);
-        }
-
-        // @arg has '=', for -a=b or a=b
-        if (ep != arg.npos) {
-            kv[arg.substr(bp, ep - bp)] = arg.substr(ep + 1);
-            continue;
-        }
-
-        // non-flag: etc. hello, -8, -8k ...
-        if (bp == 0 || (bp == 1 && '0' <= arg[1] && arg[1] <= '9')) {
+        const size_t p = arg.find_first_not_of('-');
+        if (p == 0 || p == arg.npos || (p == 1 && '0' <= arg[1] && arg[1] <= '9')) {
             res.push_back(arg);
             continue;
         }
@@ -426,7 +464,7 @@ co::vector<fastring> Mod::analyze_args(
         {
             Flag* f = 0;
             fastring next;
-            fastring name = arg.substr(bp);
+            fastring name = arg.substr(p);
 
             // for -j4
             if (name.size() > 1 && (('0' <= name[1] && name[1] <= '9') || name[1] == '-')) {
@@ -440,7 +478,6 @@ co::vector<fastring> Mod::analyze_args(
             if (i + 1 == args.size()) goto no_value;
 
             next = args[i + 1];
-            if (next.find('=') != next.npos) goto no_value;
             if (next.starts_with('-') && next.find_first_not_of('-') != next.npos) {
                 if (next[1] < '0' || next[1] > '9') goto no_value;
             }
@@ -450,11 +487,11 @@ co::vector<fastring> Mod::analyze_args(
             if (f->iden != 'b') goto has_value;
             if (next == "0" || next == "1" || next == "false" || next == "true") goto has_value;
 
-          no_value:
+        no_value:
             k.push_back(name);
             continue;
 
-          has_value:
+        has_value:
             kv[name] = next;
             ++i;
             continue;
@@ -464,50 +501,55 @@ co::vector<fastring> Mod::analyze_args(
     return res;
 }
 
+inline fastring _exename(const char* path) {
+    const char* x = strrchr(path, '/');
+    if (!x) x = strrchr(path, '\\');
+    return x ? fastring(x + 1) : fastring(path);
+}
+
 co::vector<fastring> Mod::parse_commandline(int argc, char** argv) {
+    defer(
+        this->_version.reset();
+        this->_config_path.reset();
+    );
+
     if (argc <= 1) return co::vector<fastring>();
 
-    co::vector<fastring> args(argc - 1);
-    for (int i = 1; i < argc; ++i) args.push_back(fastring(argv[i]));
+    co::vector<fastring> args;
+    args.reserve(argc - 1);
+    for (int i = 1; i < argc; ++i) args.emplace_back(argv[i]);
 
-    if (args.size() == 1 && args[0] == "--") {
-        this->print_all_flags();
-        ::exit(0);
-    }
+    fastring exe = _exename(argv[0]);
+    exe.remove_suffix(".exe");
 
     co::map<fastring, fastring> kv;
     co::vector<fastring> k;
     co::vector<fastring> v = this->analyze_args(args, kv, k);
 
-    // $exe -xx    (xx is a flag of string type)
     if (v.empty() && kv.empty() && k.size() == 1) {
         const auto& name = k[0];
         auto f = this->find_flag(name.c_str());
-        if (f && f->iden == 's') {
-            auto& s = *static_cast<fastring*>(f->addr);
-            if (!s.empty()) { cout << s << endl; ::exit(0); }
-            if (name == "help") { this->print_help(); ::exit(0); }
-            cout << name << ": value not set" << endl;
-            ::exit(0);
+        if (f) {
+            if (strcmp(f->name, "help") == 0) {
+                this->print_help(exe);
+                ::exit(0);
+            }
+            if (strcmp(f->name, "version") == 0) {
+                co::cout(_version, co::endl);
+                ::exit(0);
+            }
         }
     }
 
-    auto it = kv.find("config");
-    if (it == kv.end()) it = kv.find("conf");
-    if (it != kv.end()) {
-        FLG_config = it->second;
-    } else if (!v.empty()) {
-        if (v[0].ends_with(".conf") || v[0].ends_with("config")) {
-            if (fs::exists(v[0])) FLG_config = v[0];
-        }
+    if (!g_command_line_only) {
+        if (!v.empty() && v[0].ends_with(".conf")) _config_path = v[0];
+        if (!_config_path.empty()) this->parse_config(_config_path);
     }
 
-    if (!FLG_config.empty()) this->parse_config(FLG_config);
-
-    for (it = kv.begin(); it != kv.end(); ++it) {
+    for (auto it = kv.begin(); it != kv.end(); ++it) {
         fastring e = this->set_flag_value(it->first.c_str(), it->second);
         if (!e.empty()) {
-            cout << e << endl;
+            co::cout(e, co::endl);
             ::exit(0);
         }
     }
@@ -515,7 +557,7 @@ co::vector<fastring> Mod::parse_commandline(int argc, char** argv) {
     for (size_t i = 0; i < k.size(); ++i) {
         fastring e = this->set_bool_flags(k[i].c_str());
         if (!e.empty()) {
-            cout << e << endl;
+            co::cout(e, co::endl);
             ::exit(0);
         }
     }
@@ -523,57 +565,55 @@ co::vector<fastring> Mod::parse_commandline(int argc, char** argv) {
     return v;
 }
 
-void remove_quotes_and_comments(fastring& s) {
-    if (s.empty()) return;
+const char* remove_quotes_and_comments(fastring& s) {
+    if (s.empty()) return "";
 
-    size_t p, q, l;
-    char c = s[0];
+    size_t p;
+    const char c = s[0];
 
-    if (c == '"' || c == '\'' || c == '`') {
-        if (!s.starts_with("```")) {
-            p = s.find(c, 1);
-            l = 1;
-        } else {
-            p = s.find("```", 3);
-            l = 3;
-        }
+    if (c == '"' || c == '\'') {
+        p = s.rfind(c);
+        if (p == 0) return MLS_e_quote.value();
 
-        if (p == s.npos) goto no_quotes;
-
-        p = s.find_first_not_of(" \t", p + l);
+        p = s.find_first_not_of(" \t", p + 1);
         if (p == s.npos) {
             s.trim(" \t", 'r');
-        } else if (s[p] == '#' || s.substr(p, 2) == "//") {
+        } else if (s[p] == '#') {
             s.resize(p);
             s.trim(" \t", 'r');
         } else {
-            goto no_quotes;
+            return MLS_e_badstr.value();
         }
 
-        s.trim(l, 'b');
-        return;
+        s.trim(1, 'b');
+        return "";
     }
 
-  no_quotes:
     p = s.find('#');
-    q = s.find("//");
-    if (p != s.npos || q != s.npos) {
-        s.resize(p < q ? p : q);
+    if (p != s.npos) {
+        s.resize(p);
         s.trim(" \t", 'r');
     }
+    return "";
 }
 
 fastring getline(co::vector<fastring>& lines, size_t& n) {
     fastring line;
     while (n < lines.size()) {
-        fastring s(lines[n++]);
-        s.replace("　", " ");  // replace Chinese spaces
-        s.trim();
-        if (s.empty() || s.back() != '\\') {
-            line += s;
-            return line;
+        auto& x = lines[n++];
+        x.replace("　", " ");  // replace Chinese spaces
+        x.trim();
+        if (!x.empty() && !x.starts_with('#')) {
+            if (!x.ends_with('\\')) {
+                line += x;
+                return line;
+            }
+            x.resize(x.size() - 1);
+            x.trim(" \t\r\n", 'r');
+            line += x;
+        } else {
+            if (!line.empty()) return line;
         }
-        line += str::trim(s, " \t\r\n\\", 'r');
     }
     return line;
 }
@@ -581,7 +621,7 @@ fastring getline(co::vector<fastring>& lines, size_t& n) {
 void Mod::parse_config(const fastring& config) {
     fs::file f(config, 'r');
     if (!f) {
-        cout << "can't open config file: " << config << endl;
+        co::cout(MLS_e_open_failed, ": ", config, co::endl);
         ::exit(0);
     }
 
@@ -590,65 +630,132 @@ void Mod::parse_config(const fastring& config) {
     if (data.find('\n') == data.npos && data.find('\r') != data.npos) sep = '\r';
 
     auto lines = str::split(data, sep);
-    size_t lineno = 0; // line number
+    size_t lineno = 0;
 
     for (size_t i = 0; i < lines.size();) {
         lineno = i;
         fastring s = getline(lines, i);
-        if (s.empty() || s[0] == '#' || s.starts_with("//")) continue;
+        if (s.empty()) continue;
 
         size_t p = s.find('=');
         if (p == 0 || p == s.npos) {
-            cout << "invalid config: " << s << ", at " << config << ':' << (lineno + 1) << endl;
+            co::cout(MLS_e_conf, ": ", s, "  (", config, ':', lineno + 1, ')', co::endl);
             ::exit(0);
         }
 
         fastring flg = str::trim(s.substr(0, p), " \t", 'r');
         fastring val = str::trim(s.substr(p + 1), " \t", 'l');
-        remove_quotes_and_comments(val);
+        const char* e = remove_quotes_and_comments(val);
+        if (*e) {
+            co::cout(e, "  (", config, ':', lineno + 1, ')', co::endl);
+            ::exit(0);
+        }
 
-        fastring e = this->set_flag_value(flg.c_str(), val);
-        if (!e.empty()) {
-            if (!e.starts_with("flag not defined")) {
-                cout << e << ", at " << config << ':' << (lineno + 1) << endl;
+        val.unescape();
+        if (!this->find_flag(flg.c_str())) {
+            co::cout(
+                color::yellow, "WARNING: ", color::deflt,
+                MLS_e_not_found, ": ", flg,
+                "  (", config, ':', lineno + 1, ')', co::endl
+            );
+        } else {
+            fastring e = this->set_flag_value(flg.c_str(), val);
+            if (!e.empty()) {
+                co::cout(e, "  (", config, ':', lineno + 1, ')', co::endl);
                 ::exit(0);
-            } else {
-                cout << "WARNING: " << e << ", at " << config << ':' << (lineno + 1) << endl;
             }
         }
     }
 }
 
+void _add_flag(
+    char iden, const char* name, const char* value, const void* help, 
+    const char* file, int line, void* addr, const char* alias, bool mls
+) {
+    auto f = co::_make_static<Flag>();
+    f->iden = iden;
+    f->attr = (char)flag::attr_default;
+    f->mls = mls;
+    f->name = name;
+    f->alias = alias;
+    f->value = value;
+    f->file = file;
+    f->line = line;
+    f->addr = addr;
+
+    const char* h;
+    if (!mls) {
+        f->help = (const char*)help;
+        h = f->help;
+    } else {
+        f->mlp = (const co::mlstr*)help;
+        h = f->mlp->value();
+    }
+    if (*h == '@') {
+        const char c = *(h + 1);
+        if (c == 'c' || c == 'h') f->attr = c;
+    }
+
+    mod().add_flag(f);
+}
+
+
 void add_flag(
     char iden, const char* name, const char* value, const char* help, 
-    const char* file, int line, void* addr, const char* alias
-) {
-    mod().add_flag(iden, name, value, help, file, line, addr, alias);
+    const char* file, int line, void* addr, const char* alias) {
+    _add_flag(iden, name, value, help, file, line, addr, alias, false);
+}
+
+void add_flag(
+    char iden, const char* name, const char* value, const co::mlstr& help, 
+    const char* file, int line, void* addr, const char* alias) {
+    _add_flag(iden, name, value, &help, file, line, addr, alias, true);
 }
 
 } // namespace xx
 
-co::vector<fastring> parse(int argc, char** argv) {
-    auto& mod = xx::mod();
-    auto v = mod.parse_commandline(argc, argv);
-    if (FLG_mkconf) {
-        mod.make_config(argv[0]);
-        ::exit(0);
-    }
-    if (FLG_daemon) os::daemon();
-    return v;
+fastring alias(const char* name, const char* new_name) {
+    return xx::mod().alias(name, new_name);
 }
 
-void parse(const fastring& path) {
-    xx::mod().parse_config(path);
+void set_config_path(const char* path) {
+    xx::mod().set_config_path(path);
+}
+
+void set_version(const char* ver) {
+    xx::mod().set_version(ver);
+}
+
+fastring set_attr(const char* name, _attr_t a) {
+    return xx::mod().set_flag_attr(name, a);
 }
 
 fastring set_value(const char* name, const fastring& value) {
     return xx::mod().set_flag_value(name, value);
 }
 
-fastring alias(const char* name, const char* new_name) {
-    return xx::mod().alias(name, new_name);
+void run_after_parse(void(*cb)()) {
+    xx::mod().add_parse_cb(cb, 'a');
 }
 
-} // namespace flag
+// add a callback to be called before command line args are parsed
+void run_before_parse(void(*cb)()) {
+    xx::mod().add_parse_cb(cb, 'b');
+}
+
+co::vector<fastring> parse(int argc, char** argv, bool command_line_only) {
+    auto& mod = xx::mod();
+    mod.run_parse_cb('b');
+
+    g_command_line_only = command_line_only;
+    auto v = mod.parse_commandline(argc, argv);
+    if (FLG_mkconf) {
+        mod.make_config(argv[0]);
+        ::exit(0);
+    }
+
+    mod.run_parse_cb('a');
+    return v;
+}
+
+} // flag

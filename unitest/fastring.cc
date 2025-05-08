@@ -367,18 +367,6 @@ DEF_test(fastring) {
 
         EXPECT_LT(s, "888888880");
         EXPECT_GT(s, "8888888");
-
-        EXPECT_EQ(s.compare(3, 3, "888"), 0);
-        EXPECT_EQ(s.compare(100, 3, ""), 0);
-        EXPECT_EQ(s.compare(5, 100, "888"), 0);
-        EXPECT_LT(s.compare(5, 3, "99"), 0);
-        EXPECT_GT(s.compare(5, 3, "7777"), 0);
-
-        fastring x("777888");
-        EXPECT_EQ(s.compare(3, 3, x, 3), 0);
-        EXPECT_EQ(s.compare(3, 3, x, 3, 8), 0);
-        EXPECT_GT(s.compare(3, 3, x, 1, 4), 0);
-        EXPECT_LT(s.compare(3, 2, x, 3, 3), 0);
     }
 
     DEF_case(find) {
@@ -570,23 +558,6 @@ DEF_test(fastring) {
 
         s.toupper();
         EXPECT_EQ(s, "XYZ88");
-    }
-
-    DEF_case(match) {
-        fastring s("hello");
-        EXPECT(s.match("*"));
-        EXPECT(s.match("*hello"));
-        EXPECT(s.match("*ello"));
-        EXPECT(s.match("h*"));
-        EXPECT(s.match("h*o"));
-        EXPECT(s.match("he??o"));
-        EXPECT(s.match("h?llo"));
-        EXPECT(s.match("h?l*"));
-        EXPECT(s.match("h*l?o"));
-        EXPECT(s.match("h*l*o"));
-        EXPECT(s.match("*ll*"));
-        EXPECT(s.match("h**l**o"));
-        EXPECT(!s.match("h?o"));
     }
 
     DEF_case(clear) {

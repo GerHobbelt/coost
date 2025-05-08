@@ -1,6 +1,7 @@
 #include "co/log.h"
 #include "co/time.h"
 #include "co/co.h"
+#include "co/thread.h"
 
 DEF_bool(t, false, "if true, run test in thread");
 DEF_bool(m, false, "if true, run test in main thread");
@@ -9,7 +10,7 @@ DEF_bool(check, false, "if true, run CHECK test");
 void a() {
     char* p = 0;
     if (FLG_check) {
-        CHECK_EQ(1 + 1, 3);
+        log::check_eq(1 + 1, 3);
     } else {
         *p = 'c';
     }
@@ -29,12 +30,12 @@ int main(int argc, char** argv) {
     if (FLG_m) {
         c();
     } else if (FLG_t) {
-        std::thread(c).detach();
+        co::thread(c).detach();
     } else {
         go(c);
     }
 
-    while (1) sleep::sec(1024);
+    while (true) time::sleep(7000);
 
     return 0;
 }

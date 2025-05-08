@@ -20,10 +20,9 @@ inline uint32 _get_mask(uint32 x) { /* x > 1 */
 
 namespace co {
 
-class Rand {
-  public:
+struct Rand {
     Rand() : _mt(std::random_device{}()) {
-        const uint32 seed = _mt();
+        const uint32 seed = _mt() & 2147483647u;
         _seed = (0 < seed && seed < 2147483647u) ? seed : 23u;
     }
 
@@ -46,7 +45,6 @@ class Rand {
 
     Cache& cache() { return _cache; }
 
-  private:
     std::mt19937 _mt;
     uint32 _seed;
     Cache _cache;
@@ -54,9 +52,7 @@ class Rand {
 
 static thread_local Rand g_rand;
 
-uint32 rand() {
-    return g_rand.next();
-}
+uint32 rand() { return g_rand.next(); }
 
 inline void _gen_random_bytes(uint8* p, uint32 n) {
     auto& r = g_rand.mt19937();
@@ -121,11 +117,11 @@ const char* _expand(const char* p, uint32& len) {
         if ('a' <= a && b <= 'z') { q = paz + (a - 'a'); goto _3; }
         if ('A' <= a && b <= 'Z') { q = pAZ + (a - 'A'); goto _3; }
 
-      _2:
+    _2:
         i += 2;
         continue;
 
-      _3:
+    _3:
         if (++m == 1) s.clear();
         s.append(p + x, i - 1 - x);
         s.append(q, b - a + 1);

@@ -80,10 +80,10 @@ DEF_test(fs) {
     }
 
     DEF_case(rename) {
-        fs::rename("xxx", "yyy");
+        fs::mv("xxx", "yyy");
         EXPECT(!fs::exists("xxx"));
         EXPECT(fs::exists("yyy"));
-        fs::rename("yyy", "xxx");
+        fs::mv("yyy", "xxx");
     }
 
     DEF_case(mv) {
@@ -106,7 +106,7 @@ DEF_test(fs) {
 
         fs::mkdir("xxd/xxx");
         EXPECT_EQ(fs::mv("xxx", "xxd"), false);
-        fs::remove("xxd/xxx");
+        fs::rm("xxd/xxx");
 
         EXPECT_EQ(fs::mkdir("xxs"), true);
         EXPECT_EQ(fs::mkdir("xxd/xxs"), true);
@@ -117,7 +117,7 @@ DEF_test(fs) {
         EXPECT_EQ(fs::mkdir("xxs"), true);
         EXPECT_EQ(fs::mv("xxs", "xxd"), false);
 
-        fs::remove("xxd/xxs", true);
+        fs::rm("xxd/xxs", true);
         EXPECT(!fs::exists("xxd/xxs"));
 
         o.open("xxd/xxs", 'w');
@@ -138,13 +138,13 @@ DEF_test(fs) {
   #endif
 
     DEF_case(remove) {
-        EXPECT(fs::remove("xxx"));
-        EXPECT(fs::remove("xxx.lnk"));
-        EXPECT(fs::remove("xxd.lnk"));
-        EXPECT(fs::remove("xxplus"));
-        EXPECT(!fs::remove("xxd"));
-        EXPECT(fs::remove("xxd", true));
-        EXPECT(fs::remove("xxs"));
+        EXPECT(fs::rm("xxx"));
+        EXPECT(fs::rm("xxx.lnk"));
+        EXPECT(fs::rm("xxd.lnk"));
+        EXPECT(fs::rm("xxplus"));
+        EXPECT(!fs::rm("xxd"));
+        EXPECT(fs::rm("xxd", true));
+        EXPECT(fs::rm("xxs"));
         EXPECT(!fs::exists("xxx"));
         EXPECT(!fs::exists("xxx.lnk"));
         EXPECT(!fs::exists("xxd.lnk"));

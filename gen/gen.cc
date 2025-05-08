@@ -10,7 +10,7 @@
 DEF_bool(std, false, "use std types in the generated code");
  
 void yyerror(const char* s) {
-    cout << s << " at line " << yylineno << ", last token: " << yytext << endl;
+    co::cout(s, " at line ", yylineno, ", last token: ", yytext, co::endl);
 }
 
 int g_us = 0;
@@ -347,13 +347,15 @@ bool parse(const char* path) {
 int main(int argc, char** argv) {
     auto v = flag::parse(argc, argv);
     if (v.empty()) {
-        cout << "usage:\n"
-             << "\tgen xx.proto\n"
-             << "\tgen a.proto b.proto\n";
+        co::cout(
+            "usage:\n",
+            "\tgen xx.proto\n",
+            "\tgen a.proto b.proto\n"
+        );
         return 0;
     }
 
-    g_prog = co::make<Program>();
+    g_prog = co::_new<Program>();
     g_sname = FLG_std ? "std::string" : "fastring";
     g_aname = FLG_std ? "std::vector" : "co::vector";
 
@@ -364,6 +366,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    co::del(g_prog);
+    co::_delete(g_prog);
     return 0;
 }

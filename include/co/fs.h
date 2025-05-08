@@ -7,35 +7,31 @@
 
 namespace fs {
 
-__coapi bool exists(const char* path);
+bool exists(const char* path);
 
-__coapi bool isdir(const char* path);
+bool isdir(const char* path);
 
 // modify time
-__coapi int64 mtime(const char* path);
+int64 mtime(const char* path);
 
 // file size
-__coapi int64 fsize(const char* path);
+int64 fsize(const char* path);
 
 // p = false  ->  mkdir
 // p = true   ->  mkdir -p
-__coapi bool mkdir(const char* path, bool p = false);
+bool mkdir(const char* path, bool p = false);
 
 // async-signal-safe version
-__coapi bool mkdir(char* path, bool p);
+bool mkdir(char* path, bool p);
 
 // r = false  ->  rm or rmdir
 // r = true   ->  rm -r
-__coapi bool remove(const char* path, bool r = false);
+bool rm(const char* path, bool r = false);
 
 // rename or move a file or directory
-__coapi bool mv(const char* from, const char* to);
+bool mv(const char* from, const char* to);
 
-// deprecated, use mv instead
-__coapi bool rename(const char* from, const char* to);
-
-// administrator privileges required on windows
-__coapi bool symlink(const char* dst, const char* lnk);
+bool symlink(const char* dst, const char* lnk);
 
 inline bool exists(const fastring& path) {
     return fs::exists(path.c_str());
@@ -77,12 +73,12 @@ inline bool mkdir(const std::string& path, bool p=false) {
     return fs::mkdir(path.c_str(), p);
 }
 
-inline bool remove(const fastring& path, bool r=false) {
-    return fs::remove(path.c_str(), r);
+inline bool rm(const fastring& path, bool r=false) {
+    return fs::rm(path.c_str(), r);
 }
 
-inline bool remove(const std::string& path, bool r=false) {
-    return fs::remove(path.c_str(), r);
+inline bool rm(const std::string& path, bool r=false) {
+    return fs::rm(path.c_str(), r);
 }
 
 inline bool mv(const fastring& from, const fastring& to) {
@@ -91,14 +87,6 @@ inline bool mv(const fastring& from, const fastring& to) {
 
 inline bool mv(const std::string& from, const std::string& to) {
     return fs::mv(from.c_str(), to.c_str());
-}
-
-inline bool rename(const fastring& from, const fastring& to) {
-    return fs::rename(from.c_str(), to.c_str());
-}
-
-inline bool rename(const std::string& from, const std::string& to) {
-    return fs::rename(from.c_str(), to.c_str());
 }
 
 inline bool symlink(const fastring& dst, const fastring& lnk) {
@@ -115,8 +103,7 @@ inline bool symlink(const std::string& dst, const std::string& lnk) {
 //   'w': write        created if not exists, truncated if exists
 //   'm': modify       like 'w', but not truncated if exists
 //   '+': read/write   created if not exists
-class __coapi file {
-  public:
+struct file {
     static const int seek_beg = 0;
     static const int seek_cur = 1;
     static const int seek_end = 2;
@@ -189,15 +176,13 @@ class __coapi file {
         return this->write(&c, 1);
     }
 
-  private:
     void* _p;
 };
 
 // open mode:
 //   'a': append       created if not exists
 //   'w': write        created if not exists, truncated if exists
-class __coapi fstream {
-  public:
+struct fstream {
     fstream() : _s(8192) {}
     explicit fstream(size_t cap) : _s(cap) {}
 
@@ -256,12 +241,13 @@ class __coapi fstream {
         _f.close();
     }
 
-    // n <= cap - szie         ->   append
-    // cap - size < n <= cap   ->   flush and append
-    // n > cap                 ->   flush and write
     fstream& append(const void* s, size_t n) {
-        if (_s.capacity() < _s.size() + n) this->flush();
-        n <= _s.capacity() ? ((void)_s.append(s, n)) : ((void)_f.write(s, n));
+        if (_s.size() + n < _s.capacity()) {
+            _s.append(s, n);
+        } else {
+            this->flush();
+            n < _s.capacity() ? ((void)_s.append(s, n)) : ((void)_f.write(s, n));
+        }
         return *this;
     }
 
@@ -283,20 +269,18 @@ class __coapi fstream {
 
     template<typename T>
     fstream& operator<<(T v) {
-        if (_s.capacity() < _s.size() + 24) this->flush();
+        if (_s.capacity() <= _s.size() + 24) this->flush();
         _s << v;
         return *this;
     }
 
-  private:
+private:
     fastream _s;
     fs::file _f;
-
     DISALLOW_COPY_AND_ASSIGN(fstream);
 };
 
-class __coapi dir {
-  public:
+struct dir {
     dir() : _p(0) {}
     ~dir();
 
@@ -324,8 +308,7 @@ class __coapi dir {
     // return all entries
     co::vector<fastring> all() const;
 
-    class iterator {
-      public:
+    struct iterator {
         explicit iterator(void* p) : _p(p) {}
         ~iterator() = default;
 
@@ -340,14 +323,12 @@ class __coapi dir {
             return !this->operator==(it);
         }
 
-      private:
         void* _p;
     };
 
     iterator begin() const;
     iterator end() const { return iterator(NULL); }
 
-  private:
     void* _p;
 };
 

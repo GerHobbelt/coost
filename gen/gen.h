@@ -1,6 +1,7 @@
 #pragma once
 
 #include "co/fastring.h"
+#include "co/mem.h"
 #include "co/stl.h"
 #include "co/cout.h"
 
@@ -20,8 +21,7 @@ inline fastring S(char* s) {
     return fastring(s, n + 1, n);
 }
 
-class Service {
-  public:
+struct Service {
     Service() = default;
     ~Service() = default;
 
@@ -37,7 +37,6 @@ class Service {
 
     const co::vector<fastring>& methods() const { return _methods; }
 
-  private:
     fastring _name;
     co::vector<fastring> _methods;
     co::hash_set<fastring> _keys; 
@@ -56,8 +55,7 @@ enum type_t {
     type_object,
 };
 
-class Type {
-  public:
+struct Type {
     Type() = default;
     virtual ~Type() = default;
 
@@ -66,13 +64,11 @@ class Type {
     type_t type() const { return _type; }
     void set_type(type_t x) { _type = x; }
 
-  protected:
     fastring _name;
     type_t _type;
 };
 
-class Value {
-  public:
+struct Value {
     Value() = default;
     ~Value() {
         if (_type == type_string && _s) {
@@ -92,7 +88,6 @@ class Value {
     void set_double(double x) { _type = type_double; _d = x; }
     void set_string(char* s) { _type = type_string; _s = s; }
 
-  private:
     type_t _type;
     union {
         bool _b;
@@ -103,12 +98,11 @@ class Value {
 };
 
 // anonymous 
-class Field {
-  public:
+struct Field {
     Field() : _type(0), _value(0) {}
     ~Field() {
-        if (_type->type() != type_object) co::del(_type);
-        if (_value) co::del(_value);
+        if (_type->type() != type_object) co::_delete(_type);
+        if (_value) co::_delete(_value);
     }
 
     const fastring& name() const { return _name; }
@@ -133,7 +127,7 @@ class Array : public Type {
     }
 
     virtual ~Array() {
-        if (_element_type->type() != type_object) co::del(_element_type);
+        if (_element_type->type() != type_object) co::_delete(_element_type);
     }
 
     Type* element_type() const {
@@ -155,8 +149,8 @@ class Object : public Type {
     }
 
     virtual ~Object() {
-        for (auto& x : _fields) co::del(x);
-        for (auto& x : _anony_objects) co::del(x);
+        for (auto& x : _fields) co::_delete(x);
+        for (auto& x : _anony_objects) co::_delete(x);
     }
 
     bool add_field(Field* f) {
@@ -232,9 +226,9 @@ class Program {
         _fbase.clear();
         _fname.clear();
         _pkgs.clear();
-        co::del(_serv);
+        co::_delete(_serv);
         _serv = 0;
-        for (auto& x : _objects) co::del(x);
+        for (auto& x : _objects) co::_delete(x);
         _objects.clear();
         _idx.clear();
     }

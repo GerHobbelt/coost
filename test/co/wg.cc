@@ -1,9 +1,12 @@
 #include "co/co.h"
 #include "co/cout.h"
+#include "co/flag.h"
 
 DEF_uint32(n, 8, "coroutine number");
 
-DEF_main(argc, argv) {
+int main(int argc, char** argv) {
+    flag::parse(argc, argv);
+    
     co::wait_group wg;
     wg.add(FLG_n);
 

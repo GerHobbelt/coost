@@ -2,7 +2,6 @@
 #include "co/cout.h"
 #include "co/flag.h"
 #include "co/time.h"
-#include "co/defer.h"
 
 DEF_uint32(n, 64, "string length for this test");
 
@@ -83,29 +82,29 @@ int main(int argc, char** argv) {
     int n = 10000;
     co::print("s.size(): ", s.size());
 
-    int64 beg = now::us();
+    int64 beg = time::mono.us();
     for (int i = 0; i < n; ++i) {
         co::Json xx = json::parse(s.data(), s.size());
     }
-    int64 end = now::us();
+    int64 end = time::mono.us();
 
     co::print("parse average time used: ", (end - beg) * 1.0 / n, "us");
 
     co::Json xx = json::parse(s.data(), s.size());
     fastring xs;
-    beg = now::us();
+    beg = time::mono.us();
     for (int i = 0; i < n; ++i) {
         xs = xx.str(256 + FLG_n);
     }
-    end = now::us();
+    end = time::mono.us();
 
     co::print("stringify average time used: ", (end - beg) * 1.0 / n, "us");
 
-    beg = now::us();
+    beg = time::mono.us();
     for (int i = 0; i < n; ++i) {
         xs = xx.pretty(256 + FLG_n);
     }
-    end = now::us();
+    end = time::mono.us();
 
     co::print("pretty average time used: ", (end - beg) * 1.0 / n, "us");
 

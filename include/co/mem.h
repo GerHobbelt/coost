@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <cstddef>
 #include <stdlib.h>
-#include <mutex>
+#include <string.h>
 #include <new>
 #include <utility>
 #include <type_traits>
@@ -15,59 +15,50 @@
 namespace co {
 namespace xx {
 
-struct __coapi Initializer {
-    Initializer();
-    ~Initializer();
+struct MemInit {
+    MemInit();
+    ~MemInit();
 };
 
-static Initializer g_initializer;
+static MemInit g_mem_init;
 
 } // xx
 
 constexpr size_t cache_line_size = L1_CACHE_LINE_SIZE;
 
-// alloc @size bytes
-__coapi void* alloc(size_t size);
+void* alloc(size_t size);
 
-// alloc @size bytes, @align byte aligned (align <= 1024)
-__coapi void* alloc(size_t size, size_t align);
+// align <= 1024
+void* alloc(size_t size, size_t align);
 
-// alloc @size bytes, and zero-clear the memory
-__coapi void* zalloc(size_t size);
+// alloc and zero-clear the memory
+void* zalloc(size_t size);
 
-// free the memory
-//   - @size: size of the memory
-__coapi void free(void* p, size_t size);
+void free(void* p, size_t size);
 
-// realloc the memory allocated by co::alloc() or co::realloc()
-//   - if p is NULL, it is equal to co::alloc(new_size)
-//   - @new_size must be greater than @old_size
-__coapi void* realloc(void* p, size_t old_size, size_t new_size);
+void* realloc(void* p, size_t old_size, size_t new_size);
 
-// Like realloc, but will not create a new allocation if there is not 
-// enough room to enlarge the memory allocation pointed to by p.
-// The return value is p or NULL.
-__coapi void* try_realloc(void* p, size_t old_size, size_t new_size);
+// return @p or NULL
+void* try_realloc(void* p, size_t old_size, size_t new_size);
 
-__coapi char* strdup(const char* s);
+char* strdup(const char* s);
 
-// alloc memory and construct an object on it
-//   - T* p = co::make<T>(args)
 template<typename T, typename... Args>
-inline T* make(Args&&... args) {
+inline T* _new(Args&&... args) {
     return new (co::alloc(sizeof(T))) T(std::forward<Args>(args)...);
 }
 
-// delete the object created by co::make()
-//   - co::del((T*)p)
 template<typename T>
-inline void del(T* p, size_t n=sizeof(T)) {
-    if (p) { p->~T(); co::free((void*)p, n); }
+inline void _delete(T* p, size_t n=sizeof(T)) {
+    if (p) {
+        p->~T();
+        co::free((void*)p, n);
+    }
 }
 
 // used internally by coost, do not call it
-__coapi void* _salloc(size_t n);
-__coapi void _dealloc(std::function<void()>&& f, int x);
+void* _salloc(size_t n);
+void _dealloc(std::function<void()>&& f, int x);
 
 // used internally by coost, do not call it
 template<typename T, int N, typename... Args>
@@ -107,14 +98,9 @@ inline T* make_static(Args&&... args) {
     return _smake<T, 3>(std::forward<Args>(args)...);
 }
 
-// similar to std::unique_ptr
-//   - It is **not allowed** to create unique object from a nake pointer,
-//     use **make_unique** instead.
-//   - eg.
-//     auto s = co::make_unique<fastring>(32, 'x');
+// auto s = co::make_unique<fastring>(32, 'x');
 template<typename T>
-class unique {
-  public:
+struct unique {
     constexpr unique() noexcept : _p(0) {}
     constexpr unique(std::nullptr_t) noexcept : _p(0) {}
     unique(unique& x) noexcept : _p(x._p) { x._p = 0; }
@@ -186,7 +172,6 @@ class unique {
         x.swap(*this);
     }
 
-  private:
     union { T* _p; uint32* _s; };
 };
 
@@ -207,14 +192,9 @@ inline unique<T> make_unique(Args&&... args) {
     return x;
 }
 
-// similar to std::shared_ptr
-//   - It is **not allowed** to create shared object from a nake pointer,
-//     use **make_shared** instead.
-//   - eg.
-//     auto s = co::make_shared<fastring>(32, 'x');
+// auto s = co::make_shared<fastring>(32, 'x');
 template<typename T>
-class shared {
-  public:
+struct shared {
     constexpr shared() noexcept : _p(0) {}
     constexpr shared(std::nullptr_t) noexcept : _p(0) {}
 
@@ -309,7 +289,7 @@ class shared {
         x.swap(*this);
     }
 
-  private:
+private:
     union { T* _p; uint32* _s; };
 
     void _ref() {
@@ -339,34 +319,6 @@ inline shared<T> make_shared(Args&&... args) {
     return x;
 }
 
-struct default_allocator {
-    static void* alloc(size_t n) {
-        return co::alloc(n);
-    }
-
-    static void free(void* p, size_t n) {
-        return co::free(p, n);
-    }
-
-    static void* realloc(void* p, size_t o, size_t n) {
-        return co::realloc(p, o, n);
-    }
-};
-
-struct system_allocator {
-    static void* alloc(size_t n) {
-        return ::malloc(n);
-    }
-
-    static void free(void* p, size_t) {
-        return ::free(p);
-    }
-
-    static void* realloc(void* p, size_t, size_t n) {
-        return ::realloc(p, n);
-    }
-};
-
 // allocator for STL, alternative to std::allocator
 template<class T>
 struct stl_allocator {
@@ -385,7 +337,7 @@ struct stl_allocator {
     stl_allocator(const stl_allocator&) noexcept = default;
     template<class U> stl_allocator(const stl_allocator<U>&) noexcept {}
 
-  #if (__cplusplus >= 201703L)  // C++17
+  #if (__cplusplus >= 201703L) // C++17
     T* allocate(size_type n) {
         return static_cast<T*>(co::alloc(n * sizeof(T)));
     }

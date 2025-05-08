@@ -1,10 +1,7 @@
 #pragma once
 
-#include "clist.h"
-#include "table.h"
-#include "vector.h"
 #include "fastream.h"
-#include "hash/murmur_hash.h"
+#include "murmur_hash.h"
 #include <list>
 #include <deque>
 #include <vector>
@@ -63,6 +60,9 @@ struct eq<const char*> {
 } // xx
 
 template<class T, class Alloc = co::stl_allocator<T>>
+using vector = std::vector<T, Alloc>;
+
+template<class T, class Alloc = co::stl_allocator<T>>
 using deque = std::deque<T, Alloc>;
 
 template<class T, class Alloc = co::stl_allocator<T>>
@@ -105,11 +105,10 @@ template<
 > using hash_set = std::unordered_set<K, Hash, Pred, Alloc>;
 
 template<typename K, typename V>
-class lru_map {
-  public:
-    typedef typename co::hash_map<K, V>::iterator iterator;
-    typedef typename co::hash_map<K, V>::key_type key_type;
-    typedef typename co::hash_map<K, V>::value_type value_type;
+struct lru_map {
+    using iterator = typename co::hash_map<K, V>::iterator;
+    using key_type = typename co::hash_map<K, V>::key_type;
+    using value_type = typename co::hash_map<K, V>::value_type;
 
     lru_map() : _capacity(1024) {}
     ~lru_map() = default;
@@ -125,8 +124,8 @@ class lru_map {
 
     size_t size()    const { return _kv.size(); }
     bool empty()     const { return this->size() == 0; }
-    iterator begin() const { return ((lru_map*)this)->_kv.begin(); }
-    iterator end()   const { return ((lru_map*)this)->_kv.end(); }
+    iterator begin() { return _kv.begin(); }
+    iterator end()   { return _kv.end(); }
 
     iterator find(const key_type& key) {
         iterator it = _kv.find(key);
@@ -185,7 +184,7 @@ class lru_map {
         x.swap(*this);
     }
 
-  private:
+private:
     co::hash_map<K, V> _kv;
     co::hash_map<K, typename co::list<K>::iterator> _ki;
     co::list<K> _kl;  // key list
@@ -201,28 +200,28 @@ struct Fmt {
         for (size_t i = 0; i < n; ++i) {
             const char c = s[i];
             switch (c) {
-              case '"':
+            case '"':
                 fs.append("\\\"", 2);
                 break;
-              case '\r':
+            case '\r':
                 fs.append("\\r", 2);
                 break;
-              case '\n':
+            case '\n':
                 fs.append("\\n", 2);
                 break;
-              case '\t':
+            case '\t':
                 fs.append("\\t", 2);
                 break;
-              case '\b':
-                fs.append("\\b", 2);
+            case '\v':
+                fs.append("\\v", 2);
                 break;
-              case '\f':
+            case '\f':
                 fs.append("\\f", 2);
                 break;
-              case '\\':
+            case '\\':
                 fs.append("\\\\", 2);
                 break;
-              default:
+            default:
                 fs.append(c);
                 break;
             }
