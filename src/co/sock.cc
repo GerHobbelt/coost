@@ -37,7 +37,7 @@ sockaddr::sockaddr(const char* ip, uint16 port) {
     (void) ::getaddrinfo(ip, x.c_str(), nullptr, &ai);
     if (ai) {
         ::memcpy(this, ai->ai_addr, ai->ai_addrlen);
-        this->len = ai->ai_addrlen;
+        this->len = (uint32) ai->ai_addrlen;
         this->valid = true;
         ::freeaddrinfo(ai);
     } else {
@@ -195,7 +195,7 @@ sock_t tcp_server_socket(const char* host, uint16 port, int backlog) {
     if (!addr.valid) return (sock_t)-1;
 
     ::sockaddr& a = (::sockaddr&)addr;
-    int fd = co::socket(a.sa_family, SOCK_STREAM, IPPROTO_TCP);
+    sock_t fd = co::socket(a.sa_family, SOCK_STREAM, IPPROTO_TCP);
     if (fd != (sock_t)-1) {
         co::set_reuseaddr(fd);
 
@@ -439,7 +439,7 @@ int sendto(sock_t fd, const void* buf, int n, const sockaddr& addr, int ms) {
 
 #else /* _WIN32 */
 
-io_event::io_event(sock_t fd, _ev_t ev)
+io_event::io_event(sock_t fd, ev_t ev)
     : _fd(fd), _ev(ev), _type(io_tcp_nb), _copy_to(0) {
     const auto s = g_sched;
     s->add_io_event(fd, ev); // add socket to IOCP
@@ -653,10 +653,11 @@ int connect(sock_t fd, const sockaddr& addr, int ms) {
     // stackoverflow.com/questions/13598530/connectex-requires-the-socket-to-be-initially-bound-but-to-what
     // @fd must be an unconnected, previously bound socket
     do {
-        SOCKADDR_STORAGE a = { 0 };
-        a.ss_family = ((const ::sockaddr&)addr).sa_family;
+        co::sockaddr a;
+        ((::sockaddr&)a).sa_family = addr.af();
+
         // WSAEINVAL is returned if the socket s is already bound to an address.
-        if (co::bind(fd, &a, addr.len) != 0 && WSAGetLastError() != WSAEINVAL) {
+        if (co::bind(fd, a) != 0 && WSAGetLastError() != WSAEINVAL) {
             CO_DLOG("connectex bind local address failed, sock: ", fd);
             return -1;
         }
@@ -664,8 +665,9 @@ int connect(sock_t fd, const sockaddr& addr, int ms) {
 
     io_event ev(fd);
     int seconds, len = sizeof(int), r;
+    per_io_t* p = (per_io_t*)ev._per_io;
 
-    r = g_connect_ex(fd, (const ::sockaddr*)&addr, addr.len, 0, 0, 0, &ev->ol);
+    r = g_connect_ex(fd, (const ::sockaddr*)&addr, addr.len, 0, 0, 0, &p->ol);
     if (r == FALSE) {
         if (WSAGetLastError() != ERROR_IO_PENDING) goto err;
         if (!ev.wait(ms)) return -1;

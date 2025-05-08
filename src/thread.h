@@ -16,11 +16,11 @@ inline uint32 _thread_id() {
 typedef CRITICAL_SECTION _mutex_t;
 typedef CONDITION_VARIABLE _cv_t;
 
-inline void _mutex_init(_mutex_t* m) { InitializeCriticalSection(_m); }
-inline void _mutex_free(_mutex_t* m) { DeleteCriticalSection(_m); }
-inline void _mutex_lock(_mutex_t* m) { EnterCriticalSection(_m); }
-inline void _mutex_unlock(_mutex_t* m) { LeaveCriticalSection(_m); }
-inline bool _mutex_try_lock(_mutex_t* m) { return TryEnterCriticalSection(_m) != FALSE; }
+inline void _mutex_init(_mutex_t* m) { InitializeCriticalSection(m); }
+inline void _mutex_free(_mutex_t* m) { DeleteCriticalSection(m); }
+inline void _mutex_lock(_mutex_t* m) { EnterCriticalSection(m); }
+inline void _mutex_unlock(_mutex_t* m) { LeaveCriticalSection(m); }
+inline bool _mutex_try_lock(_mutex_t* m) { return TryEnterCriticalSection(m) != FALSE; }
 
 inline void _cv_init(_cv_t* c) { InitializeConditionVariable(c); }
 inline void _cv_free(_cv_t*) {}

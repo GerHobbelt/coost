@@ -5,10 +5,15 @@
 #include "co/mem.h"
 #include <functional>
 
+#ifdef _MSC_VER
+#pragma warning (disable:4200)
+#endif
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <WinSock2.h>
 
 namespace co {
 
@@ -56,7 +61,7 @@ struct per_io_t {
     DWORD mlen;  // memory length
     DWORD flags; // flags for WSARecv, WSARecvFrom
     WSABUF buf;  // buffer for WSARecv, WSARecvFrom, WSASend, WSASendTo
-    char s[0];   // extra buffer allocated
+    char s[];    // extra buffer allocated
 
     static per_io_t* create(void* co, int extra=0, int buf_size=0) {
         const uint32 m = sizeof(per_io_t) + extra;
