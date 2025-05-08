@@ -655,12 +655,12 @@ void Mod::start_scheds() {
     if (n != 1) {
         if ((n & (n - 1)) == 0) {
             next_sched = [this]() {
-                const uint32 i = co::rand(this->seed) & (n - 1);
+                const uint32 i = co::rand(this->seed) & (g_sched_num - 1);
                 return this->scheds[i];
             };
         } else {
             next_sched = [this]() {
-                const uint32 i = co::rand(this->seed) % n;
+                const uint32 i = co::rand(this->seed) % g_sched_num;
                 return this->scheds[i];
             };
         }
