@@ -35,13 +35,14 @@ static const char* fg[16] = {
 static bool g_has_vterm;
 
 static void cinit() {
-    auto h = GetStdHandle(STD_OUTPUT_HANDLE);
     g_has_vterm = []() {
         char buf[128];
         DWORD r = GetEnvironmentVariableA("TERM", buf, 128);
         if (r != 0) return true;
+
     #ifdef ENABLE_VIRTUAL_TERMINAL_PROCESSING
         DWORD mode = 0;
+        auto h = GetStdHandle(STD_OUTPUT_HANDLE);
         if (h && GetConsoleMode(h, &mode)) {
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             if (SetConsoleMode(h, mode)) return true;
