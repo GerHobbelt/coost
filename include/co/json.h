@@ -267,7 +267,6 @@ struct Json {
         return i < this->array_size() ? (Json&)_h->ao[i] : _null();
     }
     Json& get(int i) const { return this->get((uint32)i); }
-    Json& get(size_t i) const { return this->get((uint32)i); }
     Json& get(const char* key) const;
 
     template<class T, class ...X>
@@ -489,7 +488,6 @@ private:
     static Json& _null();
     Json& _set(uint32 i);
     Json& _set(int i) { return this->_set((uint32)i); }
-    Json& _set(size_t i) { return this->_set((uint32)i); }
     Json& _set(const char* key);
     fastream& _json2str(fastream& fs, bool debug, int mdp) const;
     fastream& _json2pretty(fastream& fs, int indent, int n, int mdp) const;
