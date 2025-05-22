@@ -1,6 +1,7 @@
 #include "co/co.h"
 #include "co/flag.h"
 #include "co/cout.h"
+#include <memory>
 
 void f0() {
     co::print("f0()");
