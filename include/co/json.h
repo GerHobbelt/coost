@@ -520,4 +520,6 @@ namespace co {
 using Json = json::Json;
 } // co
 
-inline fastream& operator<<(fastream& fs, const json::Json& x) { return x.dbg(fs); }
+inline fastream& operator<<(fastream& fs, const json::Json& x) {
+    return x.dbg(fs);
+}
