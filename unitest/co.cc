@@ -8,120 +8,120 @@
 
 namespace test {
 
-DEF_test(idgen) {
-    co::IdGen g;
-    int x = g.pop();
-    EXPECT_EQ(x, 0);
-
-    for (int i = 1; i <= 4095; ++i) {
-        x = g.pop();
-    }
-    EXPECT_EQ(x, 4095);
-
-    x = g.pop();
-    EXPECT_EQ(x, 4096);
-
-    g.push(x);
-    g.push(x - 1);
-
-    x = g.pop();
-    EXPECT_EQ(x, 4095);
-    x = g.pop();
-    EXPECT_EQ(x, 4096);
-
-    g.push(7);
-    x = g.pop();
-    EXPECT_EQ(x, 7);
-
-    for (int i = 0; i <= 4096; i++) {
-        g.push(i);
-    }
-
-    for (int i = 0; i <= (1 << 18); ++i) {
-        x = g.pop();
-    }
-
-    EXPECT_EQ(x, 1 << 18);
-    g.push(x);
-
-    x = g.pop();
-    EXPECT_EQ(x, 1 << 18);
-
-    for (int i = 0; i <= (1 << 18); ++i) {
-        g.push(i);
-    }
-
-    x = g.pop();
-    EXPECT_EQ(x, 0);
-}
-
-DEF_test(buffer) {
-    void* pbuf = 0;
-    co::Buffer& buf = *(co::Buffer*)&pbuf;
-
-    EXPECT_EQ(buf.size(), 0);
-    EXPECT_EQ(buf.capacity(), 0);
-
-    buf.append("hello world", 11);
-    EXPECT_EQ(buf.size(), 11);
-    EXPECT_EQ(buf.capacity(), 11);
-
-    buf.append("1234567890", 10);
-    EXPECT_EQ(buf.size(), 21);
-    EXPECT_GE(buf.capacity(), 21);
-
-    buf.clear();
-    EXPECT_EQ(buf.size(), 0);
-    EXPECT_GE(buf.capacity(), 21);
-
-    buf.reset();
-    EXPECT_EQ(buf.size(), 0);
-    EXPECT_EQ(buf.capacity(), 0);
-}
-
-DEF_test(copool) {
-    typedef co::CoroutinePool cpool;
-    typedef co::Coroutine* pco;
-    cpool p;
-    pco a, b;
-
-    a = p.pop();
-    b = p.pop();
-    EXPECT(a != nullptr);
-    EXPECT(b != nullptr);
-    EXPECT(b == a + 1);
-    EXPECT(!p._c.empty());
-
-    p.push(a);
-    p.push(b);
-    EXPECT(p._c.empty());
-
-    const int n = cpool::N + 1;
-    co::vector<pco> vp;
-    vp.reserve(n);
-
-    for (int i = 0; i < n; ++i) {
-        vp.push_back(p.pop());
-    }
-
-    EXPECT(p._h && p._h->next);
-    EXPECT(!p._h->next->next);
-
-    a = p.pop();
-    p.push(a);
-    b = p.pop();
-    EXPECT(b == a);
-    p.push(b);
-
-    for (int i = 0; i < n; ++i) {
-        p.push(vp[i]);
-    }
-    EXPECT(p._c.empty());
-}
-
 int g_x, g_y;
 
 DEF_test(co) {
+    DEF_case(idgen) {
+        co::IdGen g;
+        int x = g.pop();
+        EXPECT_EQ(x, 0);
+
+        for (int i = 1; i <= 4095; ++i) {
+            x = g.pop();
+        }
+        EXPECT_EQ(x, 4095);
+
+        x = g.pop();
+        EXPECT_EQ(x, 4096);
+
+        g.push(x);
+        g.push(x - 1);
+
+        x = g.pop();
+        EXPECT_EQ(x, 4095);
+        x = g.pop();
+        EXPECT_EQ(x, 4096);
+
+        g.push(7);
+        x = g.pop();
+        EXPECT_EQ(x, 7);
+
+        for (int i = 0; i <= 4096; i++) {
+            g.push(i);
+        }
+
+        for (int i = 0; i <= (1 << 18); ++i) {
+            x = g.pop();
+        }
+
+        EXPECT_EQ(x, 1 << 18);
+        g.push(x);
+
+        x = g.pop();
+        EXPECT_EQ(x, 1 << 18);
+
+        for (int i = 0; i <= (1 << 18); ++i) {
+            g.push(i);
+        }
+
+        x = g.pop();
+        EXPECT_EQ(x, 0);
+    }
+
+    DEF_case(buffer) {
+        void* pbuf = 0;
+        co::Buffer& buf = *(co::Buffer*)&pbuf;
+
+        EXPECT_EQ(buf.size(), 0);
+        EXPECT_EQ(buf.capacity(), 0);
+
+        buf.append("hello world", 11);
+        EXPECT_EQ(buf.size(), 11);
+        EXPECT_EQ(buf.capacity(), 11);
+
+        buf.append("1234567890", 10);
+        EXPECT_EQ(buf.size(), 21);
+        EXPECT_GE(buf.capacity(), 21);
+
+        buf.clear();
+        EXPECT_EQ(buf.size(), 0);
+        EXPECT_GE(buf.capacity(), 21);
+
+        buf.reset();
+        EXPECT_EQ(buf.size(), 0);
+        EXPECT_EQ(buf.capacity(), 0);
+    }
+
+    DEF_case(copool) {
+        typedef co::CoroutinePool cpool;
+        typedef co::Coroutine* pco;
+        cpool p;
+        pco a, b;
+
+        a = p.pop();
+        b = p.pop();
+        EXPECT(a != nullptr);
+        EXPECT(b != nullptr);
+        EXPECT(b == a + 1);
+        EXPECT(!p._c.empty());
+
+        p.push(a);
+        p.push(b);
+        EXPECT(p._c.empty());
+
+        const int n = cpool::N + 1;
+        co::vector<pco> vp;
+        vp.reserve(n);
+
+        for (int i = 0; i < n; ++i) {
+            vp.push_back(p.pop());
+        }
+
+        EXPECT(p._h && p._h->next);
+        EXPECT(!p._h->next->next);
+
+        a = p.pop();
+        p.push(a);
+        b = p.pop();
+        EXPECT(b == a);
+        p.push(b);
+
+        for (int i = 0; i < n; ++i) {
+            p.push(vp[i]);
+        }
+        EXPECT(p._c.empty());
+    }
+
     int v = 0;
 
     DEF_case(wait_group) {

@@ -200,30 +200,30 @@ struct Fmt {
         for (size_t i = 0; i < n; ++i) {
             const char c = s[i];
             switch (c) {
-            case '"':
-                fs.append("\\\"", 2);
-                break;
-            case '\r':
-                fs.append("\\r", 2);
-                break;
-            case '\n':
-                fs.append("\\n", 2);
-                break;
-            case '\t':
-                fs.append("\\t", 2);
-                break;
-            case '\v':
-                fs.append("\\v", 2);
-                break;
-            case '\f':
-                fs.append("\\f", 2);
-                break;
-            case '\\':
-                fs.append("\\\\", 2);
-                break;
-            default:
-                fs.append(c);
-                break;
+                case '"':
+                    fs.append("\\\"", 2);
+                    break;
+                case '\r':
+                    fs.append("\\r", 2);
+                    break;
+                case '\n':
+                    fs.append("\\n", 2);
+                    break;
+                case '\t':
+                    fs.append("\\t", 2);
+                    break;
+                case '\v':
+                    fs.append("\\v", 2);
+                    break;
+                case '\f':
+                    fs.append("\\f", 2);
+                    break;
+                case '\\':
+                    fs.append("\\\\", 2);
+                    break;
+                default:
+                    fs.append(c);
+                    break;
             }
         }
         return fs.append('"');

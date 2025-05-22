@@ -114,14 +114,12 @@ struct Field {
     Value* value() const { return _value; }
     void set_value(Value* v) { _value = v; }
 
-  private:
     fastring _name;
     Type* _type;
     Value* _value;
 };
 
-class Array : public Type {
-  public:
+struct Array : Type {
     Array() {
         _type = type_array;
     }
@@ -138,12 +136,10 @@ class Array : public Type {
         _element_type = t;
     }
 
-  private:
     Type* _element_type;
 };
 
-class Object : public Type {
-  public:
+struct Object : Type {
     Object() {
         _type = type_object;
     }
@@ -172,14 +168,12 @@ class Object : public Type {
         _anony_objects = std::move(x);
     }
 
-  private:
     co::vector<Field*> _fields;
     co::hash_set<fastring> _keys;
     co::vector<Object*> _anony_objects;
 };
 
-class Program {
-  public:
+struct Program {
     Program() : _serv(0) {}
     ~Program() {
         this->clear();
@@ -233,7 +227,6 @@ class Program {
         _idx.clear();
     }
 
-  private:
     fastring _fbase; // base name of proto file
     fastring _fname; // name of the proto file
     co::vector<fastring> _pkgs;

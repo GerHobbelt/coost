@@ -164,18 +164,18 @@ const char* file::path() const {
 
 inline int _open(const char* path, char mode) {
     switch (mode) {
-    case 'r':
-        return ::open(path, O_RDONLY);
-    case 'a':
-        return ::open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
-    case 'w':
-        return ::open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    case 'm':
-        return ::open(path, O_WRONLY | O_CREAT, 0644);
-    case '+':
-        return ::open(path, O_RDWR | O_CREAT, 0644);
-    default:
-        return nullfd;
+        case 'r':
+            return ::open(path, O_RDONLY);
+        case 'a':
+            return ::open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        case 'w':
+            return ::open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        case 'm':
+            return ::open(path, O_WRONLY | O_CREAT, 0644);
+        case '+':
+            return ::open(path, O_RDWR | O_CREAT, 0644);
+        default:
+            return nullfd;
     }
 }
 
@@ -650,18 +650,18 @@ const char* file::path() const {
 inline HANDLE _open_file(const char* path, char mode) {
     wchar_t* s = widen(path);
     switch (mode) {
-      case 'r':
-        return CreateFileW(s, GENERIC_READ, 7, 0, OPEN_EXISTING, 0, 0);
-      case 'a':
-        return CreateFileW(s, FILE_APPEND_DATA, 7, 0, OPEN_ALWAYS, 0, 0);
-      case 'w':
-        return CreateFileW(s, GENERIC_WRITE, 7, 0, CREATE_ALWAYS, 0, 0);
-      case 'm':
-        return CreateFileW(s, GENERIC_WRITE, 7, 0, OPEN_ALWAYS, 0, 0);
-      case '+':
-        return CreateFileW(s, GENERIC_READ | GENERIC_WRITE, 7, 0, OPEN_ALWAYS, 0, 0);
-      default:
-        return nullfd;
+        case 'r':
+            return CreateFileW(s, GENERIC_READ, 7, 0, OPEN_EXISTING, 0, 0);
+        case 'a':
+            return CreateFileW(s, FILE_APPEND_DATA, 7, 0, OPEN_ALWAYS, 0, 0);
+        case 'w':
+            return CreateFileW(s, GENERIC_WRITE, 7, 0, CREATE_ALWAYS, 0, 0);
+        case 'm':
+            return CreateFileW(s, GENERIC_WRITE, 7, 0, OPEN_ALWAYS, 0, 0);
+        case '+':
+            return CreateFileW(s, GENERIC_READ | GENERIC_WRITE, 7, 0, OPEN_ALWAYS, 0, 0);
+        default:
+            return nullfd;
     }
 }
 

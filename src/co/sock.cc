@@ -477,11 +477,13 @@ io_event::io_event(sock_t fd, ev_t ev, const void* buf, int size, int n)
 }
 
 io_event::~io_event() {
+    const auto s = g_sched;
     auto p = (per_io_t*)_per_io;
-    if (!p->timeout) { /* not timeout */
+    if (!s->timeout()) {
         if (_copy_to && p->n > 0) memcpy(_copy_to, p->buf.buf, p->n);
         co::free(p, p->mlen);
-    } 
+    }
+    s->running()->wtx = 0;
 }
 
 bool io_event::wait(uint32 ms) {
@@ -514,8 +516,7 @@ bool io_event::wait(uint32 ms) {
     if (ms != (uint32)-1) {
         s->add_timer(ms);
         s->yield();
-        p.timeout = s->timeout();
-        if (!p.timeout) return true;
+        if (!s->timeout()) return true;
 
         CancelIo((HANDLE)_fd);
         co::error(ETIMEDOUT);
@@ -532,6 +533,9 @@ err:
 
 wait_for_connect:
     {
+        // as no IO operation was posted to IOCP, remove waitx from coroutine
+        s->running()->wtx = 0;
+
         // check if the socket is connected every x ms
         uint32 x = 1;
         int r, sec = 0, len = sizeof(int);

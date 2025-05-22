@@ -8,6 +8,14 @@
 #include "sched.h"
 #include "../thread.h"
 
+DEF_mls(co_sched_num, "@i 协程调度器数量", "@i number of coroutine schedulers");
+DEF_mls(co_stack_num, "@i 协程调度器的栈数量(必须是2的n次方)", "@i number of stacks per scheduler(must be power of 2)");
+DEF_mls(co_stack_size, "@i 协程栈大小", "@i size of the coroutine stack");
+
+DEF_uint32(co_sched_num, os::cpunum(), MLS_co_sched_num);
+DEF_uint32(co_stack_num, 8, MLS_co_stack_num);
+DEF_uint32(co_stack_size, 1024 * 1024, MLS_co_stack_size);
+
 namespace co {
 
 struct Mod {
@@ -160,7 +168,7 @@ void cutex_impl::lock() {
             _wq.push_back((clink*)co);
 
             if (!_ncw) {
-                _ncw = (ncw_t*) co::alloc(sizeof(ncw_t), co::cache_line_size);
+                _ncw = (ncw_t*) co::alloc(sizeof(ncw_t), L1_CACHE_LINE_SIZE);
                 _cv_init(&_ncw->cv);
             }
 
@@ -199,7 +207,7 @@ void cutex_impl::unlock() {
 }
 
 cutex::cutex() {
-    _p = co::alloc(sizeof(cutex_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(cutex_impl), L1_CACHE_LINE_SIZE);
     new (_p) cutex_impl();
 }
 
@@ -327,7 +335,7 @@ bool event_impl::wait(uint32 ms) {
         if (ms == 0) return false;
 
         if (!_ncw) {
-            _ncw = (ncw_t*) co::alloc(sizeof(ncw_t), co::cache_line_size);
+            _ncw = (ncw_t*) co::alloc(sizeof(ncw_t), L1_CACHE_LINE_SIZE);
             _cv_init(&_ncw->cv);
             _ncw->wt = 0;
             _ncw->sn = 0;
@@ -410,7 +418,7 @@ inline void event_impl::reset() {
 }
 
 event::event(bool manual_reset, bool signaled) {
-    _p = co::alloc(sizeof(event_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(event_impl), L1_CACHE_LINE_SIZE);
     new (_p) event_impl(manual_reset, signaled);
 }
 
@@ -521,7 +529,7 @@ void wait_group_impl::wait() {
 }
 
 wait_group::wait_group(uint32 n) {
-    _p = co::alloc(sizeof(wait_group_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(wait_group_impl), L1_CACHE_LINE_SIZE);
     new (_p) wait_group_impl(n);
 }
 
@@ -620,7 +628,7 @@ void pool_impl::clear() {
 }
 
 pool::pool() {
-    _p = co::alloc(sizeof(pool_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(pool_impl), L1_CACHE_LINE_SIZE);
     new (_p) pool_impl();
 }
 
@@ -638,7 +646,7 @@ pool::~pool() {
 }
 
 pool::pool(create_cb_t&& c, destroy_cb_t&& d, uint32 cap) {
-    _p = co::alloc(sizeof(pool_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(pool_impl), L1_CACHE_LINE_SIZE);
     new (_p) pool_impl(std::move(c), std::move(d), cap);
 }
 

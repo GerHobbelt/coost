@@ -3,17 +3,17 @@ name: Windows
 on:
   pull_request:
     branches:
-      - master
+      - cpp17
   push:
     branches:
-      - master
+      - cpp17
 
 jobs:
   build:
     strategy:
       matrix:
         os: [windows-latest]
-        arch: [x64, x86]
+        arch: [x64, arm64]
 
     runs-on: ${{ matrix.os }}
 
@@ -25,9 +25,7 @@ jobs:
 
       - name: Tests
         run: |
-          xmake f -k shared -a ${{ matrix.arch }}
+          xmake f -a ${{ matrix.arch }}
           xmake -a
           xmake -b unitest
-          xmake r unitest -co_sched_num=4
-          xmake f -m debug -a ${{ matrix.arch }}
-          xmake
+          xmake r unitest -co_sched_num 4

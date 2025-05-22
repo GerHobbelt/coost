@@ -44,22 +44,22 @@ inline void _sleep(int ms) {
 
 inline void _cerr(const char* s) { _cerr(s, strlen(s)); }
 
-DEF_mlstr(log_dir, "@h 日志目录", "@h log directory");
-DEF_mlstr(max_log_size, "@h 单条日志最大大小", "@h max size of a single log");
-DEF_mlstr(max_log_file_size, "@h 日志文件最大大小", "@h max size of log file");
-DEF_mlstr(max_log_file_num, "@h 日志文件最大数量", "@h max number of log files");
-DEF_mlstr(max_log_buffer_size, "@h 日志缓存最大大小", "@h max size of log buffer");
-DEF_mlstr(log_flush_ms, "@h 刷新日志缓存时间间隔(单位毫秒)", "@h flush the log buffer every n ms");
-DEF_mlstr(also_log2console, "@h 日志也输出到终端", "@h also logging to console");
-DEF_mlstr(log_daily, "@h 日志文件按天轮转", "@h rotate log files by day");
-DEF_mlstr(open_failed, "打开日志文件失败", "open log file failed");
+DEF_mls(log_dir, "@i 日志目录", "@i log directory");
+DEF_mls(max_log_size, "@i 单条日志最大大小", "@i max size of a single log");
+DEF_mls(max_log_file_size, "@i 日志文件最大大小", "@i max size of log file");
+DEF_mls(max_log_file_num, "@i 日志文件最大数量", "@i max number of log files");
+DEF_mls(max_log_buffer_size, "@i 日志缓存最大大小", "@i max size of log buffer");
+DEF_mls(log_flush_ms, "@i 刷新日志缓存时间间隔(单位毫秒)", "@i flush the log buffer every n ms");
+DEF_mls(also_log2console, "@i 日志也输出到终端", "@i also logging to console");
+DEF_mls(log_daily, "@i 日志文件按天轮转", "@i rotate log files by day");
+DEF_mls(open_failed, "打开日志文件失败", "open log file failed");
 
 static fastring* g_log_dir;
 void _init_log_dir() {
     DEF_string(log_dir, "logs", MLS_log_dir);
     g_log_dir = &FLG_log_dir;
 }
-DEF_uint32(min_log_level, 0, "@h 0-4 (debug|info|warn|error|fatal)");
+DEF_uint32(min_log_level, 0, "@i 0-4 (debug|info|warn|error|fatal)");
 DEF_uint32(max_log_size, 4096, MLS_max_log_size);
 DEF_int64(max_log_file_size, 256 << 20, MLS_max_log_file_size);
 DEF_uint32(max_log_file_num, 8, MLS_max_log_file_num);
@@ -136,7 +136,7 @@ void LogTime::update() {
     const time_t now_sec = now_ms / 1000;
     const int dt = (int) (now_sec - _start);
     if (dt == 0) goto set_ms;
-    if (unlikely(dt < 0 || dt >= 60 || _start == 0)) goto reset;
+    if (dt < 0 || dt >= 60 || _start == 0) goto reset;
 
     _tm.tm_sec += dt;
     if (_tm.tm_min < 59 || _tm.tm_sec < 60) {
@@ -311,7 +311,7 @@ void LogFile::write(void* p, size_t n) {
     if (_file || this->open()) {
         _file.write(p, n);
         const int64 x = _file.size(); // -1 if not exists
-        if (unlikely(x < 0)) _file.close();
+        if (x < 0) _file.close();
         if (!_fatal && (x >= FLG_max_log_file_size || g_day_changed)) {
             this->rotate();
         }
@@ -637,26 +637,26 @@ void ExceptHandler::handle_signal(int sig) {
     auto& s = *m.stream; s.clear();
     if (!g_has_fatal_log) {
         g_has_exception = true;
-        s << 'F' << m.log_time->get() << "] ";
+        s << 'F' << m.log_time->get() << ' ' << co::thread_id() << "] ";
     }
 
     switch (sig) {
-    case SIGABRT:
-        if (!g_has_fatal_log) s << "SIGABRT: aborted\n";
-        break;
+        case SIGABRT:
+            if (!g_has_fatal_log) s << "SIGABRT: aborted\n";
+            break;
     #ifndef _WIN32
-    case SIGSEGV:
-        s << "SIGSEGV: segmentation fault\n";
-        break;
-    case SIGFPE:
-        s << "SIGFPE: floating point exception\n";
-        break;
-    case SIGBUS:
-        s << "SIGBUS: bus error\n";
-        break;
-    case SIGILL:
-        s << "SIGILL: illegal instruction\n";
-        break;
+        case SIGSEGV:
+            s << "SIGSEGV: segmentation fault\n";
+            break;
+        case SIGFPE:
+            s << "SIGFPE: floating point exception\n";
+            break;
+        case SIGBUS:
+            s << "SIGBUS: bus error\n";
+            break;
+        case SIGILL:
+            s << "SIGILL: illegal instruction\n";
+            break;
     #endif
     }
 
@@ -689,18 +689,18 @@ int ExceptHandler::handle_exception(void* e) {
         CASE_EXCEPT(EXCEPTION_STACK_OVERFLOW);
         CASE_EXCEPT(STATUS_INVALID_HANDLE);
         CASE_EXCEPT(STATUS_STACK_BUFFER_OVERRUN);
-    case 0xE06D7363: // std::runtime_error()
-        err = "STATUS_CPP_EH_EXCEPTION";
-        break;
-    case 0xE0434f4D: // VC++ Runtime error
-        err = "STATUS_CLR_EXCEPTION";
-        break;
-    case 0xCFFFFFFF:
-        err = "STATUS_APPLICATION_HANG";
-        break;
-    default:
-        err = "Unexpected exception: ";
-        break;
+        case 0xE06D7363: // std::runtime_error()
+            err = "STATUS_CPP_EH_EXCEPTION";
+            break;
+        case 0xE0434f4D: // VC++ Runtime error
+            err = "STATUS_CLR_EXCEPTION";
+            break;
+        case 0xCFFFFFFF:
+            err = "STATUS_APPLICATION_HANG";
+            break;
+        default:
+            err = "Unexpected exception: ";
+            break;
     }
 
     m.logger->stop();

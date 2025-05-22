@@ -22,10 +22,7 @@ fastring g_aname;
 inline fastring indent(int n) { return fastring(n, ' '); }
 
 void gen_service(fs::fstream& fs, const fastring& serv, const co::vector<fastring>& methods) {
-    // class for service
-    fs << "class " << serv << " : public rpc::Service {\n";
-    fs << "  public:\n";
-    fs << indent(4) << "typedef std::function<void(co::Json&, co::Json&)> Fun;\n\n";
+    fs << "struct " << serv << " : rpc::service {\n";
 
     do {
         fs << indent(4) << serv << "() {\n";
@@ -45,17 +42,16 @@ void gen_service(fs::fstream& fs, const fastring& serv, const co::vector<fastrin
        << indent(8) << "return \"" << serv << "\";\n"
        << indent(4) << "}\n\n";
 
-    fs << indent(4) << "virtual const co::map<const char*, Fun>& methods() const {\n"
+    fs << indent(4) << "virtual const co::map<const char*, rpc::method_t>& methods() const {\n"
        << indent(8) << "return _methods;\n"
        << indent(4) << "}\n\n";
 
-    // virtual void xxx(co::Json& req, co::Json& res)
+    // virtual void xxx(json::Json& req, json::Json& res)
     for (size_t i = 0; i < methods.size(); ++i) {
-        fs << indent(4) << "virtual void " << methods[i] << "(co::Json& req, co::Json& res) = 0;\n\n";
+        fs << indent(4) << "virtual void " << methods[i] << "(json::Json& req, json::Json& res) = 0;\n\n";
     }
 
-    fs << "  private:\n";
-    fs << "    co::map<const char*, Fun> _methods;\n";
+    fs << "    co::map<const char*, rpc::method_t> _methods;\n";
     fs << "};\n\n";
 }
 
@@ -93,34 +89,34 @@ void decode_array(fs::fstream& fs, Array* a, const fastring& name, const fastrin
        << indent(n) << "for (uint32 i = 0; i < " << ua << ".array_size(); ++i) {\n";
 
     switch (et->type()) {
-      case type_string:
-        fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_c_str());\n";
-        break;
-      case type_bool:
-        fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_bool());\n";
-        break;
-      case type_int:
-      case type_int32:
-      case type_int64:
-      case type_uint32:
-      case type_uint64:
-        fs << indent(n + 4) << name << ".push_back((" << et->name() << ")" << ua << "[i].as_int64());\n";
-        break;
-      case type_double:
-        fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_double());\n";
-        break;
-      case type_object:
-        fs << indent(n + 4) << et->name() << " " << uo << ";\n";
-        fs << indent(n + 4) << uo << ".from_json(" << ua << "[i]);\n";
-        fs << indent(n + 4) << name << ".emplace_back(std::move(" << uo << "));\n";
-        break;
-      case type_array:
-        fs << indent(n + 4) << "god::rm_ref_t<decltype(" << name << "[0])> " << uo << ";\n";
-        decode_array(fs, (Array*)et, uo, ua + "[i]", n + 4);
-        fs << indent(n + 4) << name << ".emplace_back(std::move(" << uo << "));\n";
-        break;
-      default:
-        break;
+        case type_string:
+          fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_c_str());\n";
+          break;
+        case type_bool:
+          fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_bool());\n";
+          break;
+        case type_int:
+        case type_int32:
+        case type_int64:
+        case type_uint32:
+        case type_uint64:
+          fs << indent(n + 4) << name << ".push_back((" << et->name() << ")" << ua << "[i].as_int64());\n";
+          break;
+        case type_double:
+          fs << indent(n + 4) << name << ".push_back(" << ua << "[i].as_double());\n";
+          break;
+        case type_object:
+          fs << indent(n + 4) << et->name() << " " << uo << ";\n";
+          fs << indent(n + 4) << uo << ".from_json(" << ua << "[i]);\n";
+          fs << indent(n + 4) << name << ".emplace_back(std::move(" << uo << "));\n";
+          break;
+        case type_array:
+          fs << indent(n + 4) << "god::rm_ref_t<decltype(" << name << "[0])> " << uo << ";\n";
+          decode_array(fs, (Array*)et, uo, ua + "[i]", n + 4);
+          fs << indent(n + 4) << name << ".emplace_back(std::move(" << uo << "));\n";
+          break;
+        default:
+          break;
     }
 
     fs << indent(n) << "}\n";
@@ -149,7 +145,7 @@ void encode_array(fs::fstream& fs, Array* a, const fastring& name, const fastrin
             fastring ua = unamed_var();
             fastring ub = unamed_var();
             fs << indent(n + 4) << "const auto& " << ua << " = " << name << "[i];\n";
-            fs << indent(n + 4) << "co::Json " << ub << ";\n";
+            fs << indent(n + 4) << "json::Json " << ub << ";\n";
             encode_array(fs, (Array*)et, ua, ub, n + 4);
             fs << indent(n + 4) << js << ".push_back(" << ub << ");\n";
         }
@@ -186,7 +182,7 @@ void gen_object(fs::fstream& fs, Object* o, int n=0) {
     if (!fields.empty()) fs << '\n';
 
     // method from_json
-    fs << indent(n + 4) << "void from_json(const co::Json& _x_) {\n";
+    fs << indent(n + 4) << "void from_json(const json::Json& _x_) {\n";
     for (auto& f : fields) {
         Type* t = f->type();
         const fastring& name = f->name();
@@ -226,8 +222,8 @@ void gen_object(fs::fstream& fs, Object* o, int n=0) {
     fs << indent(n + 4) << "}\n\n";
 
     // method as_json()
-    fs << indent(n + 4) << "co::Json as_json() const {\n";
-    fs << indent(n + 8) << "co::Json _x_;\n";
+    fs << indent(n + 4) << "json::Json as_json() const {\n";
+    fs << indent(n + 8) << "json::Json _x_;\n";
     for (auto& f : fields) {
         Type* t = f->type();
         const fastring& name = f->name();
@@ -251,7 +247,7 @@ void gen_object(fs::fstream& fs, Object* o, int n=0) {
                 g_uv = 0;
                 fastring uname = unamed_var();
                 fs << indent(n + 8) << "do {\n";
-                fs << indent(n + 12) << "co::Json " << uname << ";\n";
+                fs << indent(n + 12) << "json::Json " << uname << ";\n";
                 encode_array(fs, (Array*)t, f->name(), uname, n + 12);
                 fs << indent(n + 12) << "_x_.add_member(\"" << name << "\", " << uname << ");\n";
                 fs << indent(n + 8) << "} while (0);\n";

@@ -3,10 +3,10 @@ name: Cross (Musl)
 on:
   pull_request:
     branches:
-      - master
+      - cpp17
   push:
     branches:
-      - master
+      - cpp17
 
 jobs:
   build:

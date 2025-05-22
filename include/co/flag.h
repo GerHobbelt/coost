@@ -47,7 +47,7 @@ void add_flag(
 );
 
 void add_flag(
-    char type, const char* name, const char* value, const co::mlstr& help, 
+    char type, const char* name, const char* value, const co::mls& help, 
     const char* file, int line, void* addr, const char* alias
 );
 

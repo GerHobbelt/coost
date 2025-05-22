@@ -1,30 +1,8 @@
 #include "sched.h"
 #include "co/mem.h"
-#include "co/os.h"
-#include "co/rand.h"
-#include "co/time.h"
-
-DEF_mlstr(co_sched_num, "@h 协程调度器数量", "@h number of coroutine schedulers");
-DEF_mlstr(co_stack_num, "@h 协程调度器的栈数量(必须是2的n次方)", "@h number of stacks per scheduler(must be power of 2)");
-DEF_mlstr(co_stack_size, "@h 协程栈大小", "@h size of the coroutine stack");
-
-DEF_uint32(co_sched_num, os::cpunum(), MLS_co_sched_num);
-DEF_uint32(co_stack_num, 8, MLS_co_stack_num);
-DEF_uint32(co_stack_size, 1024 * 1024, MLS_co_stack_size);
-
-#ifdef _MSC_VER
-extern LONG WINAPI _co_on_exception(PEXCEPTION_POINTERS p);
-#endif
+#include "epoll/kqueue.h"
 
 namespace co {
-
-#ifdef _WIN32
-extern void init_sock();
-extern void cleanup_sock();
-#else
-inline void init_sock() {}
-inline void cleanup_sock() {}
-#endif
 
 __thread Sched* g_sched;
 co::vector<Sched*>* g_all_scheds;
@@ -33,9 +11,9 @@ uint32 g_stack_num = 8;
 uint32 g_stack_size = 1 << 20;
 
 Sched::Sched(uint32 id)
-    : _epoll(std::bind(&Sched::resume, this, std::placeholders::_1)),
-      _id(id), _seed(co::rand()), _stopped(false), _timeout(false),
+    : _id(id), _seed(co::rand()), _stopped(false), _timeout(false),
       _wait_ms(-1), _running(0) {
+    _epoll = new (co::alloc(sizeof(Epoll), L1_CACHE_LINE_SIZE)) Epoll();
     _main_co = _co_pool.pop();
     _main_co->id = _idgen.pop(); // id 0 is reserved for _main_co
     _main_co->sched = this;
@@ -47,26 +25,23 @@ Sched::~Sched() {
     _idgen.push(_main_co->id);
     _co_pool.push(_main_co);
     co::free(_stack, g_stack_num * sizeof(Stack));
+    _epoll->~Epoll();
+    co::free(_epoll, sizeof(Epoll));
 }
 
 void Sched::stop() {
     if (atomic_swap(&_stopped, true, mo_acq_rel) == false) {
-        _epoll.signal();
+        _epoll->signal();
         _ev.wait();
     }
 }
 
 void Sched::main_func(tb_context_from_t from) {
-    ((Coroutine*)from.priv)->ctx = from.ctx;
-  #ifdef _MSC_VER
-    __try {
-        ((Coroutine*)from.priv)->sched->running()->cb->run();
-    } __except(_co_on_exception(GetExceptionInformation())) {
-    }
-  #else
+    CO_DLOG("co main_func beg, from main ctx: ", from.ctx);
+    ((Coroutine*)from.priv)->ctx = from.ctx; // update the main ctx
     ((Coroutine*)from.priv)->sched->running()->cb->run();
-  #endif // _WIN32
-    tb_context_jump(from.ctx, 0); // jump back to the from context
+    CO_DLOG("co main_func end, back to main ctx: ", ((Coroutine*)from.priv)->ctx);
+    tb_context_jump(((Coroutine*)from.priv)->ctx, 0); // DO NOT use from.ctx here
 }
 
 /*
@@ -80,10 +55,9 @@ void Sched::main_func(tb_context_from_t from) {
  *       |             v
  *       <-------- co->cb->run():  run on _stack
  */
-void Sched::resume(void* c) {
+void Sched::resume(Coroutine* co) {
+    Stack* const s = this->get_stack(co->id);
     tb_context_from_t from;
-    Coroutine* co = (Coroutine*)c;
-    Stack* const s = co->sched->get_stack(co->id);
     _running = co;
     if (s->p == nullptr) {
         s->p = (char*) co::alloc(g_stack_size);
@@ -92,37 +66,36 @@ void Sched::resume(void* c) {
     }
 
     if (co->ctx == nullptr) { /* resume new coroutine */
-        if (s->co != co) { this->save_stack(s->co); s->co = co; }
+        if (s->co != co) {
+            save_stack(s->co, s);
+            s->co = co;
+        }
         co->ctx = tb_context_make(s->p, g_stack_size, main_func);
-        CO_DLOG("resume new co: ", co, " id: ", co->id);
+        CO_DLOG(S, " resume new c", co->id, '(', co, "), ctx: ", co->ctx);
         from = tb_context_jump(co->ctx, _main_co); // jump to main_func(from): from.priv == _main_co
 
     } else { /* resume suspended coroutine */
-        if (co->it != _timer_mgr.end()) { /* remove the timer */
-            CO_DLOG("del timer: ", co->it);
+        if (co->has_timer) { /* remove the timer */
+            CO_DLOG(SC, " del timer: ", co->it);
             _timer_mgr.del_timer(co->it);
-            co->it = _timer_mgr.end();
+            co->has_timer = false;
         }
 
-        CO_DLOG("resume co: ", co, " id: ", co->id, " stack: ", co->buf.size());
         if (s->co != co) {
-            this->save_stack(s->co);
-            if (s->top == (char*)co->ctx + co->buf.size()) {
-                memcpy(co->ctx, co->buf.data(), co->buf.size()); // restore stack data
-                s->co = co;
-            } else {
-                ::abort();
-            }
+            save_stack(s->co, s);
+            restore_stack(co, s);
+            s->co = co;
         }
+        CO_DLOG(S, " resume c", co->id, ", ctx: ", co->ctx, " stack: ", co->buf.size());
         from = tb_context_jump(co->ctx, _main_co); // jump back to where yiled was called
     }
 
     if (from.priv) { /* yield was called in coroutine, update the context */
         assert(_running == from.priv);
         _running->ctx = from.ctx;
-        CO_DLOG("yield co: ", _running, " id: ", _running->id);
+        CO_DLOG(S, " yield c", _running->id, ", ctx -> ", from.ctx);
     } else { /* coroutine terminated */
-        _running->sched->get_stack(_running->id)->co = nullptr;
+        s->co = nullptr;
         this->free_coroutine(_running);
     }
 }
@@ -143,19 +116,19 @@ void Sched::loop() {
     _ready_tasks.reserve(512);
 
     while (!_stopped) {
-        const int n = _epoll.wait(_wait_ms);
+        const int n = _epoll->wait(_wait_ms);
         if (_stopped) break;
         if (n < 0) continue;
 
-        CO_DLOG("> check I/O tasks ready to resume, num: ", n);
-        _epoll.handle_events();
+        CO_DLOG(S, " > check I/O tasks ready to resume, num: ", n);
+        _epoll->handle_events();
 
-        CO_DLOG("> check tasks ready to resume..");
+        CO_DLOG(S, " > check tasks ready to resume..");
         do {
             _task_mgr.get_all_tasks(_new_tasks, _ready_tasks);
 
             if (!_new_tasks.empty()) {
-                CO_DLOG(">> resume new tasks, num: ", _new_tasks.size());
+                CO_DLOG(S, " >> resume new tasks, num: ", _new_tasks.size());
                 for (size_t i = 0; i < _new_tasks.size(); ++i) {
                     this->resume(this->new_coroutine(_new_tasks[i]));
                 }
@@ -163,30 +136,32 @@ void Sched::loop() {
             }
 
             if (!_ready_tasks.empty()) {
-                CO_DLOG(">> resume ready tasks, num: ", _ready_tasks.size());
+                CO_DLOG(S, " >> resume ready tasks, num: ", _ready_tasks.size());
                 for (size_t i = 0; i < _ready_tasks.size(); ++i) {
                     this->resume(_ready_tasks[i]);
                 }
                 _clear_vector(_ready_tasks, _ready_tasks.size());
             }
 
-            const size_t n = this->steal_tasks();
-            if (n > 0) {
-                CO_DLOG(">> resume stolen tasks, num: ", n);
-                co::closure** const p = _new_tasks.data();
-                for (size_t i = 0; i < n; ++i) {
-                    this->resume(this->new_coroutine(p[i]));
+            if (g_sched_num > 1) {
+                const size_t n = this->steal_tasks();
+                if (n > 0) {
+                    CO_DLOG(S, " >> resume stolen tasks, num: ", n);
+                    co::closure** const p = _new_tasks.data();
+                    for (size_t i = 0; i < n; ++i) {
+                        this->resume(this->new_coroutine(p[i]));
+                    }
+                    _clear_vector(_new_tasks, n);
                 }
-                _clear_vector(_new_tasks, n);
             }
         } while (0);
 
-        CO_DLOG("> check timedout tasks..");
+        CO_DLOG(S, " > check timedout tasks..");
         do {
             _wait_ms = _timer_mgr.check_timeout(_ready_tasks);
 
             if (!_ready_tasks.empty()) {
-                CO_DLOG(">> resume timedout tasks, num: ", _ready_tasks.size());
+                CO_DLOG(S, " >> resume timedout tasks, num: ", _ready_tasks.size());
                 _timeout = true;
                 for (size_t i = 0; i < _ready_tasks.size(); ++i) {
                     this->resume(_ready_tasks[i]);
@@ -210,7 +185,7 @@ uint32 TimerManager::check_timeout(co::vector<Coroutine*>& res) {
     for (; it != _timer.end(); ++it) {
         if (it->first > now_ms) break;
         Coroutine* co = it->second;
-        if (co->it != _timer.end()) co->it = _timer.end();
+        co->has_timer = false;
         if (!co->wtx) {
             res.push_back(co);
         } else {

@@ -317,6 +317,14 @@ DEF_test(json) {
     }
 
     DEF_case(get) {
+        json::Json x;
+        EXPECT(x.get(0).is_null());
+        EXPECT(x.get("xx").is_null());
+
+        json::Json v = json::array();
+        EXPECT(x.get(0).is_null());
+        EXPECT(x.get("xx").is_null());
+
         json::Json o = {
             { "x", 3 },
             { "y", 7 },
@@ -359,6 +367,13 @@ DEF_test(json) {
         x.set("a", 3, 88);
         EXPECT(x.get("a", 2).is_null());
         EXPECT_EQ(x.get("a", 3).as_int(), 88);
+
+        json::Json v = json::array();
+        v.set(1, "hello");
+        EXPECT_EQ(v.size(), 2);
+        EXPECT(v.get(0).is_null());
+        EXPECT(v.get(1).is_string());
+        EXPECT_EQ(v.get(1).as_string(), "hello");
     }
 
     DEF_case(remove) {

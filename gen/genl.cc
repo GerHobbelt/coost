@@ -865,100 +865,102 @@ YY_RULE_SETUP
     while (state < 2) {
         const int c = yyinput();
         switch (c) {
-          case '*':
-            if (state != 1) state = 1;
-            break;
-          case '/':
-            if (state == 1) state = 2;
-            break;
-          case EOF:
-            cout << "unexpected end of file while parsing multiline comment at line: "
-                 << yylineno << endl;
-            exit(0);
-          default:
-            if (state != 0) state = 0;
-            break;
+            case '*':
+                if (state != 1) state = 1;
+                break;
+            case '/':
+                if (state == 1) state = 2;
+                break;
+            case EOF:
+                co::cout(
+                    "unexpected end of file while parsing multiline comment at line: ", yylineno, co::endl
+                );
+                exit(0);
+            default:
+                if (state != 0) state = 0;
+                break;
         }
     }
 }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 50 "genl.ll"
+#line 51 "genl.ll"
 { return yytext[0]; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 52 "genl.ll"
+#line 53 "genl.ll"
 { yylval.bconst = false; return tok_bool_constant; }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 53 "genl.ll"
+#line 54 "genl.ll"
 { yylval.bconst = true; return tok_bool_constant; }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 55 "genl.ll"
+#line 56 "genl.ll"
 { return tok_package; }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 56 "genl.ll"
+#line 57 "genl.ll"
 { return tok_service; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 57 "genl.ll"
+#line 58 "genl.ll"
 { return tok_bool; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 58 "genl.ll"
+#line 59 "genl.ll"
 { return tok_int; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 59 "genl.ll"
+#line 60 "genl.ll"
 { return tok_int32; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 60 "genl.ll"
+#line 61 "genl.ll"
 { return tok_int64; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 61 "genl.ll"
+#line 62 "genl.ll"
 { return tok_uint32; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 62 "genl.ll"
+#line 63 "genl.ll"
 { return tok_uint64; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 63 "genl.ll"
+#line 64 "genl.ll"
 { return tok_double; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 64 "genl.ll"
+#line 65 "genl.ll"
 { return tok_string; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 65 "genl.ll"
+#line 66 "genl.ll"
 { return tok_object; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 67 "genl.ll"
+#line 68 "genl.ll"
 {
-    yylval.iconst = str::to_int64(yytext);
-    if (co::error() != 0) {
-        cout << "integer overflow: " << yytext << " at line " << yylineno << endl;
+    int e;
+    yylval.iconst = str::to_int64(yytext, &e);
+    if (e != 0) {
+        co::cout("integer overflow: ", yytext, " at line ", yylineno, co::endl);
         exit(0);
     }
     return tok_int_constant;
@@ -966,11 +968,12 @@ YY_RULE_SETUP
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 76 "genl.ll"
+#line 78 "genl.ll"
 {
-    yylval.iconst = str::to_int64(yytext);
-    if (co::error() != 0) {
-        cout << "integer overflow: " << yytext << " at line " << yylineno << endl;
+    int e;
+    yylval.iconst = str::to_int64(yytext, &e);
+    if (e != 0) {
+        co::cout("integer overflow: ", yytext, " at line ", yylineno, co::endl);
         exit(0);
     }
     return tok_int_constant;
@@ -978,7 +981,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 85 "genl.ll"
+#line 88 "genl.ll"
 {
     yylval.dconst = str::to_double(yytext);
     return tok_dbl_constant;
@@ -986,7 +989,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 90 "genl.ll"
+#line 93 "genl.ll"
 {
     yylval.iden = co::strdup(yytext);
     return tok_identifier;
@@ -994,7 +997,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 95 "genl.ll"
+#line 98 "genl.ll"
 {
     char q = yytext[0];
     fastring s;
@@ -1002,10 +1005,10 @@ YY_RULE_SETUP
         int c = yyinput();
         switch (c) {
           case EOF:
-            cout << "missing " << q << " at line " << yylineno << endl;
+            co::cout("missing ", q, " at line ", yylineno, co::endl);
             exit(0);
           case '\n':
-            cout << "missing " << q << " at line " << (yylineno - 1) << endl;
+            co::cout("missing ", q, " at line ", (yylineno - 1), co::endl);
             exit(0);
           case '\\':
             c = yyinput();
@@ -1029,7 +1032,7 @@ YY_RULE_SETUP
                 s.append('\\');
                 continue;
               default:
-                cout << "invalid escape character: " << c << " at line " << yylineno << endl;
+                co::cout("invalid escape character: ", c, " at line ", yylineno, co::endl);
                 exit(0);
             }
             break;
@@ -1045,18 +1048,18 @@ YY_RULE_SETUP
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 143 "genl.ll"
+#line 146 "genl.ll"
 {
-    cout << "unexpected token: " << yytext << " at line " << yylineno << endl;
+    co::cout("unexpected token: ", yytext, " at line ", yylineno, co::endl);
     exit(0);
 }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 148 "genl.ll"
+#line 151 "genl.ll"
 ECHO;
 	YY_BREAK
-#line 1059 "genl.cc"
+#line 1062 "genl.cc"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -2032,6 +2035,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 148 "genl.ll"
+#line 151 "genl.ll"
 
 

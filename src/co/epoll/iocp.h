@@ -2,8 +2,6 @@
 #pragma once
 
 #include "co/sock.h"
-#include "co/mem.h"
-#include <functional>
 
 #ifdef _MSC_VER
 #pragma warning (disable:4200)
@@ -17,10 +15,8 @@
 
 namespace co {
 
-struct alignas(co::cache_line_size) Iocp {
-    typedef std::function<void(void*)> ev_cb_t;
-
-    Iocp(ev_cb_t&& cb);
+struct CACHE_LINE_ALIGNED Iocp {
+    Iocp();
     ~Iocp();
 
     int wait(int ms);
@@ -28,7 +24,7 @@ struct alignas(co::cache_line_size) Iocp {
     void handle_events();
 
     bool add_event(sock_t fd);
-    bool add_ev_read(sock_t fd, void*) { return this->add_event(fd); }
+    bool add_ev_read(sock_t fd, void*)  { return this->add_event(fd); }
     bool add_ev_write(sock_t fd, void*) { return this->add_event(fd); }
 
     void del_event(sock_t fd) {}
@@ -36,13 +32,12 @@ struct alignas(co::cache_line_size) Iocp {
     void del_ev_write(sock_t fd) {}
 
     union {
-        char _buf[co::cache_line_size];
+        char _buf[L1_CACHE_LINE_SIZE];
         uint8 _signaled;
     };
     int _n;
     HANDLE _iocp;
     OVERLAPPED_ENTRY* _events;
-    ev_cb_t _cb;
 };
 
 typedef Iocp Epoll;
@@ -56,22 +51,14 @@ enum {
 struct per_io_t {
     WSAOVERLAPPED ol;
     void* co;
-    bool timeout;
+    uint8 state;
     DWORD n;     // bytes transfered
     DWORD mlen;  // memory length
     DWORD flags; // flags for WSARecv, WSARecvFrom
     WSABUF buf;  // buffer for WSARecv, WSARecvFrom, WSASend, WSASendTo
     char s[];    // extra buffer allocated
 
-    static per_io_t* create(void* co, int extra=0, int buf_size=0) {
-        const uint32 m = sizeof(per_io_t) + extra;
-        const uint32 n = m + buf_size;
-        per_io_t* p = (per_io_t*) co::alloc(n);
-        memset(p, 0, m);
-        p->co = co;
-        p->mlen = n;
-        return p;
-    }
+    static per_io_t* create(void* co, int extra=0, int buf_size=0);
 };
 
 } // co

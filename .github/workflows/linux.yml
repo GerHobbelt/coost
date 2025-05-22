@@ -3,10 +3,10 @@ name: Linux
 on:
   pull_request:
     branches:
-      - master
+      - cpp17
   push:
     branches:
-      - master
+      - cpp17
 
 jobs:
   build:
@@ -24,9 +24,6 @@ jobs:
 
       - name: Tests
         run: |
-          xmake f -k shared
           xmake -a
           xmake -b unitest
-          xmake r unitest -co_sched_num=4
-          xmake f -m debug
-          xmake
+          xmake r unitest -co_sched_num 4

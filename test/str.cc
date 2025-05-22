@@ -69,7 +69,7 @@ BM_group(find) {
 }
 
 int main(int argc, char** argv) {
-    flag::parse(argc, argv);
+    flag::parse(argc, argv, true);
     if (FLG_s.empty()) {
         FLG_s.append(256, 'x').append(128, 'y').append(128, 'z');
     }

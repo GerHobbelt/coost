@@ -4,25 +4,25 @@ fastring& fastring::trim(char c, char d) {
     if (!this->empty()) {
         size_t b, e;
         switch (d) {
-        case 'r':
-        case 'R':
-            e = _size;
-            while (e > 0 && _p[e - 1] == c) --e;
-            if (e != _size) _size = e;
-            break;
-        case 'l':
-        case 'L':
-            b = 0;
-            while (b < _size && _p[b] == c) ++b;
-            if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
-            break;
-        default:
-            b = 0, e = _size;
-            while (e > 0 && _p[e - 1] == c) --e;
-            if (e != _size) _size = e;
-            while (b < _size && _p[b] == c) ++b;
-            if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
-            break;
+            case 'r':
+            case 'R':
+                e = _size;
+                while (e > 0 && _p[e - 1] == c) --e;
+                if (e != _size) _size = e;
+                break;
+            case 'l':
+            case 'L':
+                b = 0;
+                while (b < _size && _p[b] == c) ++b;
+                if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
+                break;
+            default:
+                b = 0, e = _size;
+                while (e > 0 && _p[e - 1] == c) --e;
+                if (e != _size) _size = e;
+                while (b < _size && _p[b] == c) ++b;
+                if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
+                break;
         }
     }
     return *this;
@@ -37,25 +37,25 @@ fastring& fastring::trim(const char* x, char d) {
 
         size_t b, e;
         switch (d) {
-        case 'r':
-        case 'R':
-            e = _size;
-            while (e > 0 && bs[p[e - 1]]) --e;
-            if (e != _size) _size = e;
-            break;
-        case 'l':
-        case 'L':
-            b = 0;
-            while (b < _size && bs[p[b]]) ++b;
-            if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
-            break;
-        default:
-            b = 0, e = _size;
-            while (e > 0 && bs[p[e - 1]]) --e;
-            if (e != _size) _size = e;
-            while (b < _size && bs[p[b]]) ++b;
-            if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
-            break;
+            case 'r':
+            case 'R':
+                e = _size;
+                while (e > 0 && bs[p[e - 1]]) --e;
+                if (e != _size) _size = e;
+                break;
+            case 'l':
+            case 'L':
+                b = 0;
+                while (b < _size && bs[p[b]]) ++b;
+                if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
+                break;
+            default:
+                b = 0, e = _size;
+                while (e > 0 && bs[p[e - 1]]) --e;
+                if (e != _size) _size = e;
+                while (b < _size && bs[p[b]]) ++b;
+                if (b != 0 && (_size -= b) != 0) memmove(_p, _p + b, _size);
+                break;
         }
     }
     return *this;
@@ -64,26 +64,26 @@ fastring& fastring::trim(const char* x, char d) {
 fastring& fastring::trim(size_t n, char d) {
     if (!this->empty()) {
         switch (d) {
-        case 'r':
-        case 'R':
-            _size = n < _size ? _size - n : 0;
-            break;
-        case 'l':
-        case 'L':
-            if (n < _size) {
-                _size -= n;
-                memmove(_p, _p + n, _size);
-            } else {
-                _size = 0;
-            }
-            break;
-        default:
-            if (n * 2 < _size) {
-                _size -= n * 2;
-                memmove(_p, _p + n, _size);
-            } else {
-                _size = 0;
-            }
+            case 'r':
+            case 'R':
+                _size = n < _size ? _size - n : 0;
+                break;
+            case 'l':
+            case 'L':
+                if (n < _size) {
+                    _size -= n;
+                    memmove(_p, _p + n, _size);
+                } else {
+                    _size = 0;
+                }
+                break;
+            default:
+                if (n * 2 < _size) {
+                    _size -= n * 2;
+                    memmove(_p, _p + n, _size);
+                } else {
+                    _size = 0;
+                }
         }
     }
     return *this;
@@ -117,17 +117,17 @@ fastring& fastring::escape() {
         char d;
         const char c = *p;
         switch (c) {
-        case '"':  d = '"';  break;
-        case '\\': d = '\\'; break;
-        case '\0': d = '0';  break;
-        case '\r': d = 'r';  break;
-        case '\n': d = 'n';  break;
-        case '\t': d = 't';  break;
-        case '\a': d = 'a';  break;
-        case '\b': d = 'b';  break;
-        case '\f': d = 'f';  break;
-        case '\v': d = 'v';  break;
-        default: continue;
+            case '"':  d = '"';  break;
+            case '\\': d = '\\'; break;
+            case '\0': d = '0';  break;
+            case '\r': d = 'r';  break;
+            case '\n': d = 'n';  break;
+            case '\t': d = 't';  break;
+            case '\a': d = 'a';  break;
+            case '\b': d = 'b';  break;
+            case '\f': d = 'f';  break;
+            case '\v': d = 'v';  break;
+            default: continue;
         }
         if (s.empty()) s.reserve(s.size() + 8);
         s.append(b, p - b).append('\\').append(d);
@@ -149,20 +149,20 @@ fastring& fastring::unescape() {
         char d;
         const char c = *(p + 1);
         switch (c) {
-        case '"':  d = '"';  break;
-        case '\'': d = '\''; break;
-        case '\\': d = '\\'; break;
-        case '0':  d = '\0'; break;
-        case 'r':  d = '\r'; break;
-        case 'n':  d = '\n'; break;
-        case 't':  d = '\t'; break;
-        case 'a':  d = '\a'; break;
-        case 'b':  d = '\b'; break;
-        case 'f':  d = '\f'; break;
-        case 'v':  d = '\v'; break;
-        default:
-            p = (char*)memchr(p + 2, '\\', e - p - 2);
-            continue;
+            case '"':  d = '"';  break;
+            case '\'': d = '\''; break;
+            case '\\': d = '\\'; break;
+            case '0':  d = '\0'; break;
+            case 'r':  d = '\r'; break;
+            case 'n':  d = '\n'; break;
+            case 't':  d = '\t'; break;
+            case 'a':  d = '\a'; break;
+            case 'b':  d = '\b'; break;
+            case 'f':  d = '\f'; break;
+            case 'v':  d = '\v'; break;
+            default:
+                p = (char*)memchr(p + 2, '\\', e - p - 2);
+                continue;
         }
         if (s.empty()) s.reserve(s.size());
         s.append(b, p - b).append(d);

@@ -1,55 +1,49 @@
 #pragma once
 
-#include "co/def.h"
 #include "fastream.h"
 #include <iostream>
 
 namespace co {
-namespace lang {
 
-enum Lang {
-    chs,
-    eng,
-};
+// multi-language string
+struct mls {
+    enum lang_t {
+        chs,
+        eng,
+    };
 
-extern Lang g_lang;
-
-} // lang
-
-
-inline void set_language(lang::Lang lang) {
-    lang::g_lang = lang;
-}
-
-struct mlstr {
-    mlstr() = delete;
-    ~mlstr() = delete;
-    mlstr(mlstr&&) = delete;
-    mlstr(const mlstr&) = delete;
-    void operator=(const mlstr&) = delete;
-    void operator=(mlstr&&) = delete;
+    mls() = delete;
+    ~mls() = delete;
+    mls(mls&&) = delete;
+    mls(const mls&) = delete;
+    void operator=(const mls&) = delete;
+    void operator=(mls&&) = delete;
 
     operator const char*() const noexcept {
         return this->value();
     }
 
     const char* value() const noexcept {
-        return (&_s)[lang::g_lang];
+        return (&_s)[g_lang];
     }
 
+    static void set_lang_chs() { g_lang = chs; }
+    static void set_lang_eng() { g_lang = eng; }
+
     const char* _s;
+    static lang_t g_lang;
 };
 
 } // co
 
-inline std::ostream& operator<<(std::ostream& os, const co::mlstr& s) {
+inline std::ostream& operator<<(std::ostream& os, const co::mls& s) {
     return os << s.value();
 }
 
-inline fastream& operator<<(fastream& fs, const co::mlstr& s) {
+inline fastream& operator<<(fastream& fs, const co::mls& s) {
     return fs << s.value();
 }
 
-#define DEF_mlstr(name, s_chs, s_eng) \
+#define DEF_mls(name, s_chs, s_eng) \
     static const char* _MLS_v_##name[] = { s_chs, s_eng }; \
-    static const co::mlstr& MLS_##name = *(co::mlstr*)_MLS_v_##name;
+    static const co::mls& MLS_##name = *(co::mls*)_MLS_v_##name;

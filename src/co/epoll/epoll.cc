@@ -1,21 +1,22 @@
 #ifdef __linux__
 #include "epoll.h"
 #include "co/error.h"
+#include "co/log.h"
+#include "../sched.h"
 #include "../../close.h"
-#include "../../dlog.h"
 
 #include <unistd.h>
 #include <sys/epoll.h>
 
 namespace co {
 
-Epoll::Epoll(ev_cb_t&& cb) : _signaled(0), _n(0), _cb(std::move(cb)) {
+Epoll::Epoll() : _signaled(0), _n(0) {
     _ep = ::epoll_create(1024);
-    assert(_ep != -1);
+    log::check_ne(_ep, -1);
     co::set_cloexec(_ep);
 
     int r = ::pipe(_pipe_fds);
-    assert(r != -1); (void)r;
+    log::check_ne(r, -1);
     co::set_cloexec(_pipe_fds[0]);
     co::set_cloexec(_pipe_fds[1]);
     co::set_nonblock(_pipe_fds[0]);
@@ -34,17 +35,17 @@ Epoll::~Epoll() {
 int Epoll::wait(int ms) {
     _n = ::epoll_wait(_ep, (epoll_event*)_events, 1024, ms);
     if (_n < 0) {
-        CO_DLOG("epoll_wait error: ", co::strerror(), ", fd: ", _ep);
+        log::error("epoll wait error: ", co::strerror(), ", fd: ", _ep);
     }
     return _n;
 }
 
 void Epoll::signal() {
-    char c = '0';
-    if (co::atomic_bool_cas(&_signaled, 0, 1, co::mo_acq_rel, co::mo_acquire)) {
+    if (!_signaled && atomic_bool_cas(&_signaled, 0, 1, mo_acq_rel, mo_acquire)) {
+        const char c = '0';
         const auto r = ::write(_pipe_fds[1], &c, 1);
         if (r < 0) {
-            CO_DLOG("pipe write error: ", co::strerror(), ", fd: ", _pipe_fds[1]);
+            log::error("pipe write error: ", co::strerror(), ", fd: ", _pipe_fds[1]);
         }
     }
 }
@@ -57,8 +58,11 @@ bool Epoll::add_ev_read(sock_t fd, void* c) {
     const int r = ::epoll_ctl(_ep, EPOLL_CTL_ADD, fd, &ev);
     if (r == 0) return true;
 
-    CO_DLOG("epoll add ev_read error: ", co::strerror(), ", fd: ", fd, " co: ", c);
-    if (errno == EEXIST) ::abort();
+    log::check_ne(
+        errno, EEXIST, "did you read or write on the socket ", fd,
+        " in different coroutines simultaneously?"
+    );
+    log::error("epoll add ev_read error: ", co::strerror(), ", fd: ", fd, " co: ", c);
     return false;
 }
 
@@ -70,29 +74,18 @@ bool Epoll::add_ev_write(sock_t fd, void* c) {
     const int r = ::epoll_ctl(_ep, EPOLL_CTL_ADD, fd, &ev);
     if (r == 0) return true;
 
-    CO_DLOG("epoll add ev_write error: ", co::strerror(), ", fd: ", fd, " co: ", c);
-    if (errno == EEXIST) ::abort();
+    log::check_ne(
+        errno, EEXIST, "did you read or write on the socket ", fd,
+        " in different coroutines simultaneously?"
+    );
+    log::error("epoll add ev_write error: ", co::strerror(), ", fd: ", fd, " co: ", c);
     return false;
 }
 
-void Epoll::del_ev_read(sock_t fd) {
-    const int r = ::epoll_ctl(_ep, EPOLL_CTL_DEL, fd, (epoll_event*)8);
-    if (r != 0 && errno != ENOENT) {
-        CO_DLOG("epoll del ev_read error: ", co::strerror(), ", fd: ", fd);
-    }
-}
-
-void Epoll::del_ev_write(sock_t fd) {
-    const int r = ::epoll_ctl(_ep, EPOLL_CTL_DEL, fd, (epoll_event*)8);
-    if (r != 0 && errno != ENOENT) {
-        CO_DLOG("epoll del ev_write error: ", co::strerror(), ", fd: ", fd);
-    }
-}
-
 void Epoll::del_event(sock_t fd) {
-    const int r = ::epoll_ctl(_ep, EPOLL_CTL_DEL, fd, (epoll_event*)8);
+    const int r = ::epoll_ctl(_ep, EPOLL_CTL_DEL, fd, (epoll_event*)128);
     if (r != 0 && errno != ENOENT) {
-        CO_DLOG("epoll del event error: ", co::strerror(), ", fd: ", fd);
+        log::error("epoll del event error: ", co::strerror(), ", fd: ", fd);
     }
 }
 
@@ -106,7 +99,7 @@ void Epoll::_handle_ev_pipe() {
         } else {
             if (errno == EWOULDBLOCK || errno == EAGAIN) break;
             if (errno == EINTR) continue;
-            CO_DLOG("pipe read error: ", co::strerror(), " fd: ", _pipe_fds[0]);
+            log::error("pipe read error: ", co::strerror(), " fd: ", _pipe_fds[0]);
             break;
         }
     }
@@ -116,10 +109,9 @@ void Epoll::_handle_ev_pipe() {
 void Epoll::handle_events() {
     auto events = (epoll_event*)_events;
     for (int i = 0; i < _n; ++i) {
-        auto& ev = events[i];
-        void* c = ev.data.ptr;
-        if (c) {
-            _cb(c);
+        const auto co = (Coroutine*) events[i].data.ptr;
+        if (co) {
+            co->sched->resume(co);
         } else {
             this->_handle_ev_pipe();
         }

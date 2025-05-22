@@ -27,21 +27,21 @@ fastring base64_encode(const void* p, size_t n) {
     }
 
     switch (r) {
-    case 1:
-        c = s[0];
-        x[0] = et[c >> 2];
-        x[1] = et[(c & 0x03) << 4];
-        x[2] = '=';
-        x[3] = '=';
-        break;
-    case 2:
-        a = s[0];
-        b = s[1];
-        x[0] = et[a >> 2];
-        x[1] = et[((a & 0x03) << 4) | (b >> 4)];
-        x[2] = et[(b & 0x0f) << 2];
-        x[3] = '=';
-        break;
+        case 1:
+            c = s[0];
+            x[0] = et[c >> 2];
+            x[1] = et[(c & 0x03) << 4];
+            x[2] = '=';
+            x[3] = '=';
+            break;
+        case 2:
+            a = s[0];
+            b = s[1];
+            x[0] = et[a >> 2];
+            x[1] = et[((a & 0x03) << 4) | (b >> 4)];
+            x[2] = et[(b & 0x0f) << 2];
+            x[3] = '=';
+            break;
     }
 
     return v;
@@ -91,14 +91,14 @@ fastring base64_decode(const void* p, size_t n) {
     }
 
     switch ((int)(e - s)) { /* 0 < e - s < 8 */
-    case 4:
-        break;
-    case 6:
-        if (e[-2] != '\r' && e[-1] != '\n') goto err;
-        e -= 2;
-        break;
-    default:
-        goto err;
+        case 4:
+            break;
+        case 6:
+            if (e[-2] != '\r' && e[-1] != '\n') goto err;
+            e -= 2;
+            break;
+        default:
+            goto err;
     }
 
     do {

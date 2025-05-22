@@ -154,107 +154,107 @@ struct check_notnull {
 template<typename T, typename... V>
 check_notnull(T*, V&&...) -> check_notnull<T, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_eq {
-    check_eq(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) == static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_eq(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) == static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_eq failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_eq(C&&, C&&, V&&...) -> check_eq<C, V...>;
+template<typename A, typename B, typename... V>
+check_eq(A&&, B&&, V&&...) -> check_eq<A, B, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_ne {
-    check_ne(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) != static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_ne(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) != static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_ne failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_ne(C&&, C&&, V&&...) -> check_ne<C, V...>;
+template<typename A, typename B, typename... V>
+check_ne(A&&, B&&, V&&...) -> check_ne<A, B, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_lt {
-    check_lt(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) < static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_lt(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) < static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_lt failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_lt(C&&, C&&, V&&...) -> check_lt<C, V...>;
+template<typename A, typename B, typename... V>
+check_lt(A&&, B&&, V&&...) -> check_lt<A, B, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_le {
-    check_le(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) <= static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_le(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) <= static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_le failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_le(C&&, C&&, V&&...) -> check_le<C, V...>;
+template<typename A, typename B, typename... V>
+check_le(A&&, B&&, V&&...) -> check_le<A, B, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_gt {
-    check_gt(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) > static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_gt(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) > static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_gt failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_gt(C&&, C&&, V&&...) -> check_gt<C, V...>;
+template<typename A, typename B, typename... V>
+check_gt(A&&, B&&, V&&...) -> check_gt<A, B, V...>;
 
-template<typename C, typename... V>
+template<typename A, typename B, typename... V>
 struct check_ge {
-    check_ge(C&& a, C&& b, V&&... v, xx::filine&& fl=_filine_) {
-        if (!(static_cast<C&&>(a) >= static_cast<C&&>(b))) xx::FatalLogSaver(
+    check_ge(A&& a, B&& b, V&&... v, xx::filine&& fl=_filine_) {
+        if (!(static_cast<A&&>(a) >= static_cast<B&&>(b))) xx::FatalLogSaver(
             xx::path_base(fl.file, xx::path_len(fl.file)),
             xx::path_base_len(fl.file), fl.line
         ).s.cat(
             "check_ge failed: ",
-            std::forward<C>(a), " vs ", std::forward<C>(b), "! ",
+            std::forward<A>(a), " vs ", std::forward<B>(b), "! ",
             std::forward<V>(v)...
         );
     }
 };
 
-template<typename C, typename... V>
-check_ge(C&&, C&&, V&&...) -> check_ge<C, V...>;
+template<typename A, typename B, typename... V>
+check_ge(A&&, B&&, V&&...) -> check_ge<A, B, V...>;
 
 #undef _filine_
 

@@ -227,6 +227,41 @@ struct pooled_ptr {
     DISALLOW_COPY_AND_ASSIGN(pooled_ptr);
 };
 
+struct crontab {
+    crontab() : _stopped(false) {}
+    ~crontab() = default;
+
+    // run f() in @ms miliseconds
+    template<typename F>
+    void run_in(F&& f, int ms) {
+        go([f, ms]() {
+            co::sleep(ms);
+            f();
+        });
+    }
+
+    // run f() every @ms miliseconds
+    template<typename F>
+    void run_every(F&& f, int ms) {
+        _wg.add();
+        go([this, f, ms]() {
+            while (!this->_stopped) {
+                co::sleep(ms);
+                f();
+            }
+            _wg.done();
+        });
+    }
+
+    void stop() {
+        atomic_store(&_stopped, true, mo_relaxed);
+        _wg.wait();
+    }
+
+    co::wait_group _wg;
+    bool _stopped;
+};
+
 } // co
 
 using co::go;

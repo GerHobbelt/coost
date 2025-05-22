@@ -71,7 +71,7 @@ const char* const pAZ = kS + 38;
 // Inspired by github.com/mcmikecreations/nanoid_cpp.
 // Also see https://github.com/ai/nanoid for details.
 fastring randstr(int n) {
-    if (unlikely(n <= 0)) return fastring();
+    if (n <= 0) return fastring();
 
     const uint32 mask = 63;
     const uint32 p = mask * n;

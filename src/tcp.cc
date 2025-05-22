@@ -1,5 +1,6 @@
 #include "co/tcp.h"
 #include "co/co.h"
+#include "co/def.h"
 #include "co/error.h"
 #include "co/log.h"
 #include "co/atomic.h"
@@ -7,6 +8,56 @@
 #include "co/sock.h"
 
 namespace tcp {
+
+client::client(const char* host, uint16 port) {
+    _server_host = (host && *host) ? host : "127.0.0.1";
+    _server_port = port;
+    _fd = (sock_t)-1;
+}
+
+client::client(const client& c) {
+    _server_host = c._server_host;
+    _server_port = c._server_port;
+    _fd = (sock_t)-1;
+}
+
+client::~client() {
+    this->disconnect();
+}
+
+bool client::connect(int ms) {
+    if (this->connected()) return true;
+
+    int r;
+    co::sockaddr addr(_server_host, _server_port);
+    if (!addr.valid) {
+        log::error("connect failed, invalid server addr: ", _server_host, ':', _server_port);
+        goto end;
+    }
+
+    _fd = co::tcp_socket(addr.af());
+    if (_fd == (sock_t)-1) goto end;
+
+    r = co::connect(_fd, addr, ms);
+    if (r != 0) {
+        log::error("connect to ", _server_host, ':', _server_port, " failed: ", co::strerror());
+        goto end;
+    }
+
+    co::set_tcp_nodelay(_fd);
+    return true;
+
+end:
+    this->disconnect();
+    return false;
+}
+
+void client::disconnect() {
+    if (this->connected()) {
+        co::close(_fd);
+        _fd = (sock_t)-1;
+    }
+}
 
 struct server_impl {
     server_impl() {
@@ -18,26 +69,18 @@ struct server_impl {
 
     bool start(const char* ip, uint16 port);
     void loop();
-
-    uint32 ref() {
-        return co::atomic_inc(&_x.count, co::mo_relaxed);
-    }
-
-    void unref() {
-        if (co::atomic_dec(&_x.count, co::mo_acq_rel) == 0) {
-            this->~server_impl();
-            co::free(this, sizeof(server_impl));
-        }
-    }
-
     void on_connection(sock_t fd);
+
+    uint32 ref();
+    void unref();
+    uint32 conn_num() { return co::atomic_load(&_x.count, co::mo_relaxed) - 1; }
 
     union {
         struct {
             int32 started;
             uint32 count;
         } _x;
-        uint32 _[co::cache_line_size / sizeof(uint32)];
+        uint32 _[L1_CACHE_LINE_SIZE / sizeof(uint32)];
     };
 
     const char* _ip;
@@ -47,6 +90,17 @@ struct server_impl {
     co::sockaddr _addr;
     conn_cb_t _conn_cb;
 };
+
+inline uint32 server_impl::ref() {
+    return co::atomic_inc(&_x.count, co::mo_relaxed);
+}
+
+inline void server_impl::unref() {
+    if (co::atomic_dec(&_x.count, co::mo_acq_rel) == 0) {
+        this->~server_impl();
+        co::free(this, sizeof(server_impl));
+    }
+}
 
 void server_impl::on_connection(sock_t fd) {
     co::set_tcp_keepalive(fd);
@@ -97,15 +151,15 @@ void server_impl::loop() {
             );
             go(&server_impl::on_connection, this, _connfd);
         } else {
-            log::warn(
-                "server(", _ip, ':', _port, ") accept error: ", co::strerror()
-            );
+            log::warn("server(", _ip, ':', _port, ") accept error: ", co::strerror());
         }
     }
+
+    this->unref();
 }
 
 server::server() {
-    _p = co::alloc(sizeof(server_impl), co::cache_line_size);
+    _p = co::alloc(sizeof(server_impl), L1_CACHE_LINE_SIZE);
     new (_p) server_impl();
 }
 
@@ -126,58 +180,8 @@ bool server::start(const char* ip, int port) {
     return ((server_impl*)_p)->start(ip, port);
 }
 
-client::client(const char* host, uint16 port) {
-    _server_host = (host && *host) ? host : "127.0.0.1";
-    _server_port = port;
-    _fd = (sock_t)-1;
-}
-
-client::client(const client& c) {
-    _server_host = c._server_host;
-    _server_port = c._server_port;
-    _fd = (sock_t)-1;
-}
-
-client::~client() {
-    this->disconnect();
-}
-
-bool client::connect(int ms) {
-    if (this->connected()) return true;
-
-    int r;
-    co::sockaddr addr(_server_host, _server_port);
-    if (!addr.valid) {
-        log::error(
-            "connect failed, invalid server addr: ", _server_host, ':', _server_port
-        );
-        goto end;
-    }
-
-    _fd = co::tcp_socket(addr.af());
-    if (_fd == (sock_t)-1) goto end;
-
-    r = co::connect(_fd, addr, ms);
-    if (r != 0) {
-        log::error(
-            "connect to ", _server_host, ':', _server_port, " failed: ", co::strerror()
-        );
-        goto end;
-    }
-
-    co::set_tcp_nodelay(_fd);
-    return true;
-
-end:
-    this->disconnect();
-    return false;
-}
-
-void client::disconnect() {
-    if (this->connected()) {
-        co::close(_fd);
-        _fd = (sock_t)-1;
-    }
+uint32 server::conn_num() {
+    return ((server_impl*)_p)->conn_num();
 }
 
 } // tcp

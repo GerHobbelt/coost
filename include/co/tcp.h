@@ -5,25 +5,6 @@
 
 namespace tcp {
 
-typedef std::function<void(sock_t)> conn_cb_t;
-
-struct server {
-    server();
-    ~server();
-
-    // set connection callback
-    server& on_connection(conn_cb_t&& cb);
-
-    server& on_connection(const conn_cb_t& cb) {
-        return this->on_connection(conn_cb_t(cb));
-    }
-
-    bool start(const char* ip, int port);
-
-    void* _p;
-    DISALLOW_COPY_AND_ASSIGN(server);
-};
-
 struct client {
     client(const char* server_host, uint16 server_port);
     client(const client& c);
@@ -52,6 +33,27 @@ struct client {
     const char* _server_host;
     uint16 _server_port;
     sock_t _fd;
+};
+
+typedef std::function<void(sock_t)> conn_cb_t;
+
+struct server {
+    server();
+    ~server();
+
+    // set connection callback
+    server& on_connection(conn_cb_t&& cb);
+
+    server& on_connection(const conn_cb_t& cb) {
+        return this->on_connection(conn_cb_t(cb));
+    }
+
+    bool start(const char* ip, int port);
+
+    uint32 conn_num();
+
+    void* _p;
+    DISALLOW_COPY_AND_ASSIGN(server);
 };
 
 } // tcp

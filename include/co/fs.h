@@ -274,7 +274,6 @@ struct fstream {
         return *this;
     }
 
-private:
     fastream _s;
     fs::file _f;
     DISALLOW_COPY_AND_ASSIGN(fstream);

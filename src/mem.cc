@@ -1,6 +1,7 @@
 #include "co/mem.h"
 #include "./mem.h"
 #include "co/atomic.h"
+#include "co/def.h"
 #include "co/god.h"
 #include <mutex>
 
@@ -108,8 +109,8 @@ struct StaticAlloc {
     ~StaticAlloc() = default;
 
     void* alloc(size_t n) {
-        const size_t H = co::cache_line_size >> 1;
-        return _m.alloc((uint32)n, n <= H ? sizeof(void*) : co::cache_line_size);
+        const size_t H = L1_CACHE_LINE_SIZE >> 1;
+        return _m.alloc((uint32)n, n <= H ? sizeof(void*) : L1_CACHE_LINE_SIZE);
     }
 
     StaticMem _m;
@@ -149,7 +150,7 @@ static const uint32 B = 5;
 static const uint32 g_array_size = 4;
 #endif
 
-static const uint32 CL = co::cache_line_size;
+static const uint32 CL = L1_CACHE_LINE_SIZE;
 static const uint32 R = (1 << B) - 1;
 static const size_t C = (size_t)1;
 static const uint32 g_sb_bits = 15;
@@ -790,8 +791,8 @@ inline void ThreadAlloc::free(void* p, size_t n) {
 }
 
 inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
-    if (unlikely(!p)) return this->alloc(n);
-    if (unlikely(o > g_max_alloc_size)) return ::realloc(p, n);
+    if (!p) return this->alloc(n);
+    if (o > g_max_alloc_size) return ::realloc(p, n);
     //if (n <= o) ::abort();
 
     if (o <= 2048) {
@@ -823,7 +824,7 @@ inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
 }
 
 inline void* ThreadAlloc::try_realloc(void* p, size_t o, size_t n) {
-    if (unlikely(!p || o > g_max_alloc_size)) return NULL;
+    if (!p || o > g_max_alloc_size) return NULL;
     //if (n <= o) ::abort();
 
     if (o <= 2048) {

@@ -1,13 +1,7 @@
--- plat
 set_config("plat", os.host())
-
--- project
 set_project("co")
-
--- set xmake minimum version
 set_xmakever("2.5.6")
 
--- set common flags
 set_languages("c++17")
 set_warnings("all")     -- -Wall
 set_symbols("debug")    -- dbg symbols
@@ -21,7 +15,7 @@ elseif is_plat("mingw") then
     set_optimize("faster")
 else
     set_optimize("faster")  -- faster: -O2  fastest: -O3  none: -O0
-    --add_cxflags("-Wno-narrowing", "-Wno-sign-compare", "-Wno-strict-aliasing")
+    add_cxflags("-Wno-narrowing", "-Wno-sign-compare", "-Wno-strict-aliasing")
     if is_plat("macosx", "iphoneos") then
         add_cxflags("-fno-pie")
     end
@@ -43,4 +37,4 @@ option_end()
 add_includedirs("include")
 
 -- include sub-projects
-includes("src", "test", "unitest")
+includes("src", "gen", "test", "unitest")

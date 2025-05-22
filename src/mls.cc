@@ -1,9 +1,7 @@
 #include "co/mls.h"
 
 namespace co {
-namespace lang {
 
-Lang g_lang = chs;
+mls::lang_t mls::g_lang = mls::chs;
 
-} // lang
 } // co

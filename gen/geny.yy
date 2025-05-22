@@ -83,8 +83,8 @@ Service:
     tok_service tok_identifier '{' MethodList '}'
     {
         if (g_prog->service()) {
-            cout << "error: found multiple service" << endl;
-            co::del($4);
+            co::cout("error: found multiple service", co::endl);
+            co::_delete($4);
             exit(0);
         }
         $4->set_name(S($2));
@@ -97,12 +97,12 @@ MethodList:
         $$ = $1;
         fastring m = S($2);
         if (!$$->add_method(m)) {
-            cout << "error: method name " << m << " duplicated" << endl;
+            co::cout("error: method name ", m, " duplicated", co::endl);
             exit(0);
         }
     }
   | {
-        $$ = co::make<Service>();
+        $$ = co::_new<Service>();
     }
 
 Method:
@@ -117,8 +117,8 @@ Object:
         $$ = $4;
         $$->set_name(S($2));
         if (!g_prog->add_object($$)) {
-            cout << "error: object type " << $$->name() << " duplicated" << endl;
-            co::del($$);
+            co::cout("error: object type ", $$->name(), " duplicated", co::endl);
+            co::_delete($$);
             exit(0);
         }
     }
@@ -128,26 +128,26 @@ FieldList:
     {
         $$ = $1;
         if (!($$->add_field($2))) {
-            cout << "error: field " << $2->name() << " duplicated in object " << $$->name() << endl;
+            co::cout("error: field ", $2->name(), " duplicated in object ", $$->name(), co::endl);
             exit(0);
         }
     }
   | {
-        $$ = co::make<Object>();
+        $$ = co::_new<Object>();
     }
 
 Field:
     FieldType FieldName FieldValue
     {
-        $$ = co::make<Field>();
+        $$ = co::_new<Field>();
         $$->set_type($1);
         $$->set_name(S($2));
         $$->set_value($3);
     }
   | FieldName '[' FieldType ']'
     {
-        $$ = co::make<Field>();
-        auto a = co::make<Array>();
+        $$ = co::_new<Field>();
+        auto a = co::_new<Array>();
         a->set_element_type($3);
         $$->set_type(a);
         $$->set_name(S($1));
@@ -155,7 +155,7 @@ Field:
   | FieldName '{' FieldList '}'
     {
         g_prog->add_anony_object($3);
-        $$ = co::make<Field>();
+        $$ = co::_new<Field>();
         $$->set_type($3);
         $$->set_name(S($1));
     }
@@ -166,7 +166,7 @@ FieldType:
         fastring s = S($1);
         $$ = g_prog->find_object(s);
         if (!$$) {
-            cout << "unknown type " << s << " at line " << yylineno << endl;
+            co::cout("unknown type ", s, " at line ", yylineno, co::endl);
             exit(0);
         }
     }
@@ -176,7 +176,7 @@ FieldType:
     }
   | '[' FieldType ']'
     {
-        auto a = co::make<Array>();
+        auto a = co::_new<Array>();
         a->set_element_type($2);
         $$ = a;
     }
@@ -189,49 +189,49 @@ FieldType:
 BaseType:
     tok_bool
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("bool");
         $$->set_type(type_bool);
     }
   | tok_int
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("int");
         $$->set_type(type_int);
     }
   | tok_int32
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("int32");
         $$->set_type(type_int32);
     }
   | tok_int64
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("int64");
         $$->set_type(type_int64);
     }
   | tok_uint32
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("uint32");
         $$->set_type(type_uint32);
     }
   | tok_uint64
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("uint64");
         $$->set_type(type_uint64);
     }
   | tok_double
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("double");
         $$->set_type(type_double);
     }
   | tok_string
     {
-        $$ = co::make<Type>();
+        $$ = co::_new<Type>();
         $$->set_name("string");
         $$->set_type(type_string);
     }
@@ -254,22 +254,22 @@ FieldValue:
 ConstValue:
     tok_bool_constant
     {
-        $$ = co::make<Value>();
+        $$ = co::_new<Value>();
         $$->set_bool($1);
     }
   | tok_int_constant
     {
-        $$ = co::make<Value>();
+        $$ = co::_new<Value>();
         $$->set_integer($1);
     }
   | tok_dbl_constant
     {
-        $$ = co::make<Value>();
+        $$ = co::_new<Value>();
         $$->set_double($1);
     }
   | tok_literal
     {
-        $$ = co::make<Value>();
+        $$ = co::_new<Value>();
         $$->set_string($1);
     }
 

@@ -24,8 +24,6 @@ static MemInit g_mem_init;
 
 } // xx
 
-constexpr size_t cache_line_size = L1_CACHE_LINE_SIZE;
-
 void* alloc(size_t size);
 
 // align <= 1024

@@ -1,4 +1,5 @@
 #include "co/str.h"
+#include "co/def.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,23 +15,23 @@ bool to_bool(const char* s, int* e) {
 
 inline int _shift(char c) {
     switch (c) {
-    case 'k':
-    case 'K':
-        return 10;
-    case 'm':
-    case 'M':
-        return 20;
-    case 'g':
-    case 'G':
-        return 30;
-    case 't':
-    case 'T':
-        return 40;
-    case 'p':
-    case 'P':
-        return 50;
-    default:
-        return 0;
+        case 'k':
+        case 'K':
+            return 10;
+        case 'm':
+        case 'M':
+            return 20;
+        case 'g':
+        case 'G':
+            return 30;
+        case 't':
+        case 'T':
+            return 40;
+        case 'p':
+        case 'P':
+            return 50;
+        default:
+            return 0;
     }
 }
 
@@ -97,22 +98,18 @@ uint64 to_uint64(const char* s, int* e) {
 }
 
 int32 to_int32(const char* s, int* e) {
-    int64 x = to_int64(s, e);
-    if (unlikely(x > MAX_INT32 || x < MIN_INT32)) {
-        if (e) *e = ERANGE;
-        return 0;
-    }
-    return (int32)x;
+    const int64 x = to_int64(s, e);
+    if (MIN_INT32 <= x && x <= MAX_INT32)  return (int32)x;
+    if (e) *e = ERANGE;
+    return 0;
 }
 
 uint32 to_uint32(const char* s, int* e) {
-    int64 x = (int64) to_uint64(s, e);
-    int64 absx = x < 0 ? -x : x;
-    if (unlikely(absx > MAX_UINT32)) {
-        if (e) *e = ERANGE;
-        return 0;
-    }
-    return (uint32)x;
+    const int64 x = (int64) to_uint64(s, e);
+    const int64 absx = x < 0 ? -x : x;
+    if (absx <= MAX_UINT32) return (uint32)x;
+    if (e) *e = ERANGE;
+    return 0;
 }
 
 double to_double(const char* s, int* e) {
@@ -173,7 +170,7 @@ fastring replace(
     const char* to, size_t l,
     size_t t
 ) {
-    if (unlikely(m == 0)) return fastring(s, n);
+    if (m == 0) return fastring(s, n);
 
     const char* p;
     const char* const end = s + n;
@@ -208,7 +205,7 @@ co::vector<fastring> split(const char* s, size_t n, char c, size_t t) {
 
 co::vector<fastring> split(const char* s, size_t n, const char* c, size_t m, size_t t) {
     co::vector<fastring> v;
-    if (unlikely(m == 0)) return v;
+    if (m == 0) return v;
     v.reserve(8);
 
     const char* p;

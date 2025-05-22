@@ -30,19 +30,20 @@ literal_begin (['\"])
     while (state < 2) {
         const int c = yyinput();
         switch (c) {
-          case '*':
-            if (state != 1) state = 1;
-            break;
-          case '/':
-            if (state == 1) state = 2;
-            break;
-          case EOF:
-            cout << "unexpected end of file while parsing multiline comment at line: "
-                 << yylineno << endl;
-            exit(0);
-          default:
-            if (state != 0) state = 0;
-            break;
+            case '*':
+                if (state != 1) state = 1;
+                break;
+            case '/':
+                if (state == 1) state = 2;
+                break;
+            case EOF:
+                co::cout(
+                    "unexpected end of file while parsing multiline comment at line: ", yylineno, co::endl
+                );
+                exit(0);
+            default:
+                if (state != 0) state = 0;
+                break;
         }
     }
 }
@@ -65,18 +66,20 @@ literal_begin (['\"])
 "object"   { return tok_object; }
 
 {intconstant} {
-    yylval.iconst = str::to_int64(yytext);
-    if (co::error() != 0) {
-        cout << "integer overflow: " << yytext << " at line " << yylineno << endl;
+    int e;
+    yylval.iconst = str::to_int64(yytext, &e);
+    if (e != 0) {
+        co::cout("integer overflow: ", yytext, " at line ", yylineno, co::endl);
         exit(0);
     }
     return tok_int_constant;
 }
 
 {hexconstant} {
-    yylval.iconst = str::to_int64(yytext);
-    if (co::error() != 0) {
-        cout << "integer overflow: " << yytext << " at line " << yylineno << endl;
+    int e;
+    yylval.iconst = str::to_int64(yytext, &e);
+    if (e != 0) {
+        co::cout("integer overflow: ", yytext, " at line ", yylineno, co::endl);
         exit(0);
     }
     return tok_int_constant;
@@ -99,10 +102,10 @@ literal_begin (['\"])
         int c = yyinput();
         switch (c) {
           case EOF:
-            cout << "missing " << q << " at line " << yylineno << endl;
+            co::cout("missing ", q, " at line ", yylineno, co::endl);
             exit(0);
           case '\n':
-            cout << "missing " << q << " at line " << (yylineno - 1) << endl;
+            co::cout("missing ", q, " at line ", (yylineno - 1), co::endl);
             exit(0);
           case '\\':
             c = yyinput();
@@ -126,7 +129,7 @@ literal_begin (['\"])
                 s.append('\\');
                 continue;
               default:
-                cout << "invalid escape character: " << c << " at line " << yylineno << endl;
+                co::cout("invalid escape character: ", c, " at line ", yylineno, co::endl);
                 exit(0);
             }
             break;
@@ -141,7 +144,7 @@ literal_begin (['\"])
 }
 
 . {
-    cout << "unexpected token: " << yytext << " at line " << yylineno << endl;
+    co::cout("unexpected token: ", yytext, " at line ", yylineno, co::endl);
     exit(0);
 }
 

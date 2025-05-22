@@ -11,13 +11,13 @@ struct XX {
         int ii;
         fastring ss;
 
-        void from_json(const co::Json& _x_) {
+        void from_json(const json::Json& _x_) {
             ii = (int)_x_.get("ii").as_int64();
             ss = _x_.get("ss").as_c_str();
         }
 
-        co::Json as_json() const {
-            co::Json _x_;
+        json::Json as_json() const {
+            json::Json _x_;
             _x_.add_member("ii", ii);
             _x_.add_member("ss", ss);
             return _x_;
@@ -28,13 +28,13 @@ struct XX {
         int xx;
         fastring yy;
 
-        void from_json(const co::Json& _x_) {
+        void from_json(const json::Json& _x_) {
             xx = (int)_x_.get("xx").as_int64();
             yy = _x_.get("yy").as_c_str();
         }
 
-        co::Json as_json() const {
-            co::Json _x_;
+        json::Json as_json() const {
+            json::Json _x_;
             _x_.add_member("xx", xx);
             _x_.add_member("yy", yy);
             return _x_;
@@ -48,7 +48,7 @@ struct XX {
     co::vector<int> ai;
     co::vector<_unamed_s2> ao;
 
-    void from_json(const co::Json& _x_) {
+    void from_json(const json::Json& _x_) {
         b = _x_.get("b").as_bool();
         i = (int)_x_.get("i").as_int64();
         s = _x_.get("s").as_c_str();
@@ -69,21 +69,21 @@ struct XX {
         } while (0);
     }
 
-    co::Json as_json() const {
-        co::Json _x_;
+    json::Json as_json() const {
+        json::Json _x_;
         _x_.add_member("b", b);
         _x_.add_member("i", i);
         _x_.add_member("s", s);
         _x_.add_member("data", data.as_json());
         do {
-            co::Json _unamed_v1;
+            json::Json _unamed_v1;
             for (size_t i = 0; i < ai.size(); ++i) {
                 _unamed_v1.push_back(ai[i]);
             }
             _x_.add_member("ai", _unamed_v1);
         } while (0);
         do {
-            co::Json _unamed_v1;
+            json::Json _unamed_v1;
             for (size_t i = 0; i < ao.size(); ++i) {
                 _unamed_v1.push_back(ao[i].as_json());
             }

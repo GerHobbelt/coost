@@ -29,7 +29,7 @@ struct sockaddr {
     int af() const; // address family
     fastring str() const;
     int32 p[8];
-    uint32 len;
+    uint32 len; // addrlen
     bool valid;
 };
 

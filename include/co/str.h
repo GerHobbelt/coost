@@ -3,7 +3,6 @@
 #include "def.h"
 #include "fastring.h"
 #include "stl.h"
-#include "error.h"
 
 namespace str {
 

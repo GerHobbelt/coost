@@ -25,7 +25,7 @@ void c() {
 }
 
 int main(int argc, char** argv) {
-    flag::parse(argc, argv);
+    flag::parse(argc, argv, true);
 
     if (FLG_m) {
         c();

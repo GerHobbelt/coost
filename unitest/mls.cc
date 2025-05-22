@@ -3,15 +3,15 @@
 
 namespace test {
 
-DEF_mlstr(s, "你好", "hello");
+DEF_mls(s, "你好", "hello");
 
 DEF_test(mls) {
     EXPECT_EQ(MLS_s.value(), fastring("你好"));
 
-    co::set_language(co::lang::eng);
+    co::mls::set_lang_eng();
     EXPECT_EQ(MLS_s.value(), fastring("hello"));
 
-    co::set_language(co::lang::chs);
+    co::mls::set_lang_chs();
     EXPECT_EQ(MLS_s.value(), fastring("你好"));
 
     fastring s;

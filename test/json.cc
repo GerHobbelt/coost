@@ -58,7 +58,7 @@ co::Json h() {
 }
 
 int main(int argc, char** argv) {
-    flag::parse(argc, argv);
+    flag::parse(argc, argv, true);
 
     auto u = f();
     auto v = g();

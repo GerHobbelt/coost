@@ -6,10 +6,7 @@
 
 namespace xx {
 
-class HelloWorld : public rpc::Service {
-  public:
-    typedef std::function<void(co::Json&, co::Json&)> Fun;
-
+struct HelloWorld : rpc::service {
     HelloWorld() {
         using std::placeholders::_1;
         using std::placeholders::_2;
@@ -23,16 +20,15 @@ class HelloWorld : public rpc::Service {
         return "HelloWorld";
     }
 
-    virtual const co::map<const char*, Fun>& methods() const {
+    virtual const co::map<const char*, rpc::method_t>& methods() const {
         return _methods;
     }
 
-    virtual void hello(co::Json& req, co::Json& res) = 0;
+    virtual void hello(json::Json& req, json::Json& res) = 0;
 
-    virtual void world(co::Json& req, co::Json& res) = 0;
+    virtual void world(json::Json& req, json::Json& res) = 0;
 
-  private:
-    co::map<const char*, Fun> _methods;
+    co::map<const char*, rpc::method_t> _methods;
 };
 
 } // xx

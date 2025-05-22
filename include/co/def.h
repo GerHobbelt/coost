@@ -45,14 +45,15 @@ typedef uint64_t uint64;
 #endif
 #endif
 
-#ifndef unlikely
 #if (defined(__GNUC__) && __GNUC__ >= 3) || defined(__clang__)
-#define unlikely(x) __builtin_expect(!!(x), 0)
+#define if_unlikely(x) if (__builtin_expect(!!(x), 0))
 #else
-#define unlikely(x) (x)
+#define if_unlikely(x) if (x)
 #endif
-#endif
+
 
 #ifndef L1_CACHE_LINE_SIZE 
 #define L1_CACHE_LINE_SIZE 64
 #endif
+
+#define CACHE_LINE_ALIGNED alignas(L1_CACHE_LINE_SIZE )

@@ -1,5 +1,6 @@
 #include "co/thread.h"
 #include "./thread.h"
+#include "co/def.h"
 #include "co/mem.h"
 
 namespace co {
@@ -71,7 +72,7 @@ struct sync_event_impl {
 };
 
 sync_event::sync_event(bool manual_reset, bool signaled) {
-    _p = co::alloc(sizeof(sync_event_impl), co::cache_line_size); assert(_p);
+    _p = co::alloc(sizeof(sync_event_impl), L1_CACHE_LINE_SIZE); assert(_p);
     new (_p) sync_event_impl(manual_reset, signaled);
 }
 

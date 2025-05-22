@@ -4,23 +4,22 @@
 #include "co/fs.h"
 #include "co/stl.h"
 #include "co/str.h"
-#include "co/thread.h"
 
-DEF_mlstr(help, "@c 显示帮助信息", "@c show help info");
-DEF_mlstr(version, "@c 显示版本信息", "@c show version");
-DEF_mlstr(mkconf, "@c 生成配置文件", "@c generate config file");
-DEF_mlstr(e_range, "超出数值范围", "out of range");
-DEF_mlstr(e_inval, "无效数值", "invalid value");
-DEF_mlstr(e_not_found, "未找到flag", "flag not found");
-DEF_mlstr(e_name_used, "已用于", "already used in");
-DEF_mlstr(e_redef, "重定义于", "redefined in");
-DEF_mlstr(e_multi_alias, "不允许多个别名", "multiple aliases are not allowed");
-DEF_mlstr(e_alias_conflict, "别名冲突", "alias name conflict");
-DEF_mlstr(e_no_value, "值未设置", "value not set");
-DEF_mlstr(e_open_failed, "打开文件失败", "open file failed");
-DEF_mlstr(e_conf, "无效配置", "invalid config");
-DEF_mlstr(e_quote, "引号缺失", "quote missing");
-DEF_mlstr(e_badstr, "无效字符串值", "invalid string value");
+DEF_mls(help, "@c 显示帮助信息", "@c show help info");
+DEF_mls(version, "@c 显示版本信息", "@c show version");
+DEF_mls(mkconf, "@c 生成配置文件", "@c generate config file");
+DEF_mls(e_range, "超出数值范围", "out of range");
+DEF_mls(e_inval, "无效数值", "invalid value");
+DEF_mls(e_not_found, "未找到flag", "flag not found");
+DEF_mls(e_name_used, "已用于", "already used in");
+DEF_mls(e_redef, "重定义于", "redefined in");
+DEF_mls(e_multi_alias, "不允许多个别名", "multiple aliases are not allowed");
+DEF_mls(e_alias_conflict, "别名冲突", "alias name conflict");
+DEF_mls(e_no_value, "值未设置", "value not set");
+DEF_mls(e_open_failed, "打开文件失败", "open file failed");
+DEF_mls(e_conf, "无效配置", "invalid config");
+DEF_mls(e_quote, "引号缺失", "quote missing");
+DEF_mls(e_badstr, "无效字符串值", "invalid string value");
 
 DEF_bool(help, false, MLS_help);
 DEF_bool(version, false, MLS_version);
@@ -88,12 +87,14 @@ struct Flag {
     char iden;
     char attr;
     bool mls;  // multi-language support
+    bool inco; // defined in coost
+    int n;
     const char* name;
     const char* alias;
     const char* value; // default value
     union {
         const char* help;
-        const co::mlstr* mlp;
+        const co::mls* mlp;
     };
     const char* file;
     int line;
@@ -104,7 +105,7 @@ const char* Flag::get_help() const {
     const char* h = !mls ? help : mlp->value();
     if (*h == '@') {
         const char c = *(h + 1);
-        if (c == 'd' || c == 'c' || c == 'h') {
+        if (c == 'i' || c == 'd' || c == 'c' || c == 'h') {
             h += 2;
             while (*h && *h == ' ') ++h;
         }
@@ -116,36 +117,36 @@ const char* Flag::set_value(const fastring& v) {
     int err = 0;
     const char* s = v.c_str();
     switch (this->iden) {
-    case 's':
-        *static_cast<fastring*>(this->addr) = v;
-        break;
-    case 'b':
-        *static_cast<bool*>(this->addr) = str::to_bool(s, &err);
-        break;
-    case 'i':
-        *static_cast<int32*>(this->addr) = str::to_int32(s, &err);
-        break;
-    case 'u':
-        *static_cast<uint32*>(this->addr) = str::to_uint32(s, &err);
-        break;
-    case 'I':
-        *static_cast<int64*>(this->addr) = str::to_int64(s, &err);
-        break;
-    case 'U':
-        *static_cast<uint64*>(this->addr) = str::to_uint64(s, &err);
-        break;
-    case 'd':
-        *static_cast<double*>(this->addr) = str::to_double(s, &err);
-        break;
+        case 's':
+            *static_cast<fastring*>(this->addr) = v;
+            break;
+        case 'b':
+            *static_cast<bool*>(this->addr) = str::to_bool(s, &err);
+            break;
+        case 'i':
+            *static_cast<int32*>(this->addr) = str::to_int32(s, &err);
+            break;
+        case 'u':
+            *static_cast<uint32*>(this->addr) = str::to_uint32(s, &err);
+            break;
+        case 'I':
+            *static_cast<int64*>(this->addr) = str::to_int64(s, &err);
+            break;
+        case 'U':
+            *static_cast<uint64*>(this->addr) = str::to_uint64(s, &err);
+            break;
+        case 'd':
+            *static_cast<double*>(this->addr) = str::to_double(s, &err);
+            break;
     }
 
     switch (err) {
-    case 0:
-        return "";
-    case ERANGE:
-        return MLS_e_range.value();
-    default:
-        return MLS_e_inval.value();
+        case 0:
+            return "";
+        case ERANGE:
+            return MLS_e_range.value();
+        default:
+            return MLS_e_inval.value();
     }
 }
 
@@ -165,22 +166,22 @@ fastring int2str(T t) {
 
 fastring Flag::get_value() const {
     switch (this->iden) {
-    case 's':
-        return *static_cast<fastring*>(this->addr);
-    case 'b':
-        return str::from(*static_cast<bool*>(this->addr));
-    case 'i':
-        return int2str(*static_cast<int32*>(this->addr));
-    case 'u':
-        return int2str(*static_cast<uint32*>(this->addr));
-    case 'I':
-        return int2str(*static_cast<int64*>(this->addr));
-    case 'U':
-        return int2str(*static_cast<uint64*>(this->addr));
-    case 'd':
-        return str::from(*static_cast<double*>(this->addr));
-    default:
-        return fastring();
+        case 's':
+            return *static_cast<fastring*>(this->addr);
+        case 'b':
+            return str::from(*static_cast<bool*>(this->addr));
+        case 'i':
+            return int2str(*static_cast<int32*>(this->addr));
+        case 'u':
+            return int2str(*static_cast<uint32*>(this->addr));
+        case 'I':
+            return int2str(*static_cast<int64*>(this->addr));
+        case 'U':
+            return int2str(*static_cast<uint64*>(this->addr));
+        case 'd':
+            return str::from(*static_cast<double*>(this->addr));
+        default:
+            return fastring();
     }
 }
 
@@ -340,27 +341,20 @@ void Mod::print_help(const fastring& exe) {
     co::cout(" [flag [value]]...\n\n", color::deflt);
 
     size_t m = 0;
-    co::vector<size_t> len;
-    len.reserve(_flags.size());
-
     Flag* ff[3];
-    size_t nn[3];
     for (auto it = _flags.begin(); it != _flags.end(); ++it) {
         auto& f = *(it->second);
         size_t n = strlen(f.name) + 3;
         if (*f.alias) n += strlen(f.alias) + 1;
-        len.push_back(n);
+        f.n = (int)n;
         if (n <= 21 && m < n) m = n;
 
         if (f.addr == &FLG_help) {
             ff[0] = &f;
-            nn[0] = n;
         } else if (f.addr == &FLG_version) {
             ff[1] = &f;
-            nn[1] = n;
         } else if (f.addr == &FLG_mkconf) {
             ff[2] = &f;
-            nn[2] = n;
         }
     }
 
@@ -369,18 +363,29 @@ void Mod::print_help(const fastring& exe) {
         color::deflt
     );
 
-    ff[0]->print(m, nn[0]);
-    ff[1]->print(m, nn[1]);
-    if (!g_command_line_only) ff[2]->print(m, nn[2]);
+    ff[0]->print(m, ff[0]->n);
+    ff[1]->print(m, ff[1]->n);
+    if (!g_command_line_only) ff[2]->print(m, ff[2]->n);
     co::cout(co::endl);
+
+    for (auto it = _flags.begin(); it != _flags.end(); ++it) {
+        auto& f = *(it->second);
+        if (f.inco) {
+            if (&f == ff[0] || &f == ff[1] || &f == ff[2]) continue;
+            if (*f.alias && strcmp(it->first, f.name) != 0) continue;
+            f.print(m, f.n);
+        }
+    }
 
     int i = 0;
     for (auto it = _flags.begin(); it != _flags.end(); ++it) {
-        const size_t n = len[i++];
         auto& f = *(it->second);
-        if (&f == ff[0] || &f == ff[1] || &f == ff[2]) continue;
-        if (*f.alias && strcmp(it->first, f.name) != 0) continue;
-        f.print(m, n);
+        if (!f.inco) {
+            if (&f == ff[0] || &f == ff[1] || &f == ff[2]) continue;
+            if (*f.alias && strcmp(it->first, f.name) != 0) continue;
+            if (i++ == 0) co::cout(co::endl);
+            f.print(m, f.n);
+        }
     }
     co::cout().flush();
 }
@@ -676,6 +681,7 @@ void _add_flag(
     f->iden = iden;
     f->attr = (char)flag::attr_default;
     f->mls = mls;
+    f->inco = false;
     f->name = name;
     f->alias = alias;
     f->value = value;
@@ -688,12 +694,21 @@ void _add_flag(
         f->help = (const char*)help;
         h = f->help;
     } else {
-        f->mlp = (const co::mlstr*)help;
+        f->mlp = (const co::mls*)help;
         h = f->mlp->value();
     }
     if (*h == '@') {
         const char c = *(h + 1);
-        if (c == 'c' || c == 'h') f->attr = c;
+        switch (c) {
+            case 'i':
+                f->attr = 'h';
+                f->inco = true;
+                break;
+            case 'c':
+            case 'h':
+                f->attr = c;
+                break;
+        }
     }
 
     mod().add_flag(f);
@@ -707,7 +722,7 @@ void add_flag(
 }
 
 void add_flag(
-    char iden, const char* name, const char* value, const co::mlstr& help, 
+    char iden, const char* name, const char* value, const co::mls& help, 
     const char* file, int line, void* addr, const char* alias) {
     _add_flag(iden, name, value, &help, file, line, addr, alias, true);
 }
