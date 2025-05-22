@@ -338,10 +338,8 @@ struct Json {
 
     Json& operator[](uint32 i) { return this->get(i); }
     Json& operator[](int i) { return this->get((uint32)i); }
-    Json& operator[](size_t i) { return this->get((uint32)i); }
     const Json& operator[](uint32 i) const { return this->get(i); }
     const Json& operator[](int i) const { return this->get((uint32)i); }
-    const Json& operator[](size_t i) const { return this->get((uint32)i); }
 
     // for array and object, return number of the elements.
     // for string, return the length.

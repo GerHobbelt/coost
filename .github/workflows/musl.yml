@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        cross: [arm-linux-musleabi, aarch64-linux-musl]
+        cross: [aarch64-linux-musl]
 
     runs-on: ${{ matrix.os }}
 

@@ -28,5 +28,5 @@ jobs:
           unzip -q -o ./android-ndk-r21-linux-x86_64.zip
       - name: Tests
         run: |
-          xmake f -p android --ndk=`pwd`/android-ndk-r21
+          xmake f -a arm64 -p android --ndk=`pwd`/android-ndk-r21
           xmake -a
