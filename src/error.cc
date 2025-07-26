@@ -19,8 +19,8 @@ struct Error {
 };
 
 inline Error& error() {
-    static __thread Error* kE = 0;
-    return kE ? *kE : *(kE = co::static_new<Error>());
+    static __thread Error* e = 0;
+    return e ? *e : *(e = co::_make_static<Error>());
 }
 } // xx
 
@@ -60,7 +60,6 @@ const char* strerror(int e) {
 
 #else
 #include <errno.h>
-#include <string.h>
 #include <mutex>
 
 namespace co {
@@ -73,8 +72,8 @@ struct Error {
 };
 
 inline Error& error() {
-    static __thread Error* kE = 0;
-    return kE ? *kE : *(kE = co::static_new<Error>());
+    static __thread Error* e = 0;
+    return e ? *e : *(e = co::_make_static<Error>());
 }
 
 } // xx
@@ -87,9 +86,9 @@ const char* strerror(int e) {
     if (it != err.pos.end()) return err.s.data() + it->second;
 
     uint32 pos = (uint32) err.s.size();
-    static auto kMtx = co::static_new<std::mutex>();
+    static auto m = co::_make_static<std::mutex>();
     {
-        std::lock_guard<std::mutex> g(*kMtx);
+        std::lock_guard<std::mutex> g(*m);
         err.s << ::strerror(e) << '\0';
     }
 

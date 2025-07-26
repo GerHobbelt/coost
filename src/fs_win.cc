@@ -187,13 +187,12 @@ void file::seek(int64 off, int whence) {
     static int seekfrom[3] = { FILE_BEGIN, FILE_CURRENT, FILE_END };
     fctx* p = (fctx*)_p;
     if (p && p->fd != nullfd) {
-        whence = seekfrom[whence];
         if (off < (1LL << 31)) {
-            SetFilePointer(p->fd, (LONG)off, 0, whence);
+            SetFilePointer(p->fd, (LONG)off, 0, seekfrom[whence]);
         } else {
             LARGE_INTEGER li;
             li.QuadPart = off;
-            SetFilePointer(p->fd, li.LowPart, &li.HighPart, whence);
+            SetFilePointer(p->fd, li.LowPart, &li.HighPart, seekfrom[whence]);
         }
     }
 }

@@ -1,12 +1,14 @@
 #include "scheduler.h"
 #include "co/stl.h"
 
+#ifndef _WIN32
 #ifdef __linux__
 #include <unistd.h>       // for syscall()
 #include <sys/syscall.h>  // for SYS_xxx definitions
 #include <time.h>         // for clock_gettime
 #else
 #include <sys/time.h>     // for gettimeofday
+#endif
 #endif
 
 namespace co {
@@ -52,7 +54,7 @@ inline void cv_init(cv_t* c) {
     r = pthread_cond_init(c, &attr); assert(r == 0);
     pthread_condattr_destroy(&attr);
   #else
-    int r = pthread_cond_init(c, 0); assert(r == 0);
+    int r = pthread_cond_init(c, 0); (void)r; assert(r == 0);
   #endif
 }
 
@@ -105,11 +107,11 @@ uint32 thread_id() {
 
 class mutex {
   public:
-    mutex() { const int r = pthread_mutex_init(&_m, 0); assert(r == 0); }
-    ~mutex() { const int r = pthread_mutex_destroy(&_m); assert(r == 0); }
+    mutex() { const int r = pthread_mutex_init(&_m, 0); (void)r; assert(r == 0); }
+    ~mutex() { const int r = pthread_mutex_destroy(&_m); (void)r; assert(r == 0); }
 
-    void lock() { const int r = pthread_mutex_lock(&_m); assert(r == 0); }
-    void unlock() { const int r = pthread_mutex_unlock(&_m); assert(r == 0); }
+    void lock() { const int r = pthread_mutex_lock(&_m); (void)r; assert(r == 0); }
+    void unlock() { const int r = pthread_mutex_unlock(&_m); (void)r; assert(r == 0); }
     bool try_lock() { return pthread_mutex_trylock(&_m) == 0; }
     mutex_t* native_handle() { return &_m; }
 
@@ -210,9 +212,10 @@ mutex::mutex() {
 }
 
 mutex::~mutex() {
-    if (atomic_dec(_p, mo_acq_rel) == 0) {
+    if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
         ((mutex_impl*)(_p + 2))->~mutex_impl();
         co::free(_p, sizeof(mutex_impl) + 8);
+        _p = 0;
     }
 }
 
@@ -353,9 +356,10 @@ event::event(bool manual_reset, bool signaled) {
 }
 
 event::~event() {
-    if (atomic_dec(_p, mo_acq_rel) == 0) {
+    if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
         ((event_impl*)(_p + 2))->~event_impl();
         co::free(_p, sizeof(event_impl) + 8);
+        _p = 0;
     }
 }
 
@@ -466,9 +470,10 @@ wait_group::wait_group(uint32 n) {
 }
 
 wait_group::~wait_group() {
-    if (atomic_dec(_p, mo_acq_rel) == 0) {
+    if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
         ((event_impl*)(_p + 2))->~event_impl();
         co::free(_p, sizeof(event_impl) + 8);
+        _p = 0;
     }
 }
 
@@ -486,138 +491,15 @@ void wait_group::wait() const {
     ((event_impl*)(_p + 2))->wait((uint32)-1);
 }
 
-class PoolImpl {
-  public:
-    typedef co::array<void*> V;
-
-    PoolImpl()
-        : _pools(co::scheduler_num(), nullptr), _maxcap((size_t)-1) {
-    }
-
-    PoolImpl(std::function<void*()>&& ccb, std::function<void(void*)>&& dcb, size_t cap)
-        : _pools(co::scheduler_num(), nullptr), _maxcap(cap), 
-          _ccb(std::move(ccb)), _dcb(std::move(dcb)) {
-    }
-
-    ~PoolImpl() { this->clear(); }
-
-    void* pop();
-
-    void push(void* p);
-
-    void clear();
-
-    size_t size() const;
-
-  private:
-    co::array<V*> _pools;
-    size_t _maxcap;
-    std::function<void*()> _ccb;
-    std::function<void(void*)> _dcb;
-};
-
-inline void* PoolImpl::pop() {
-    CHECK(gSched) << "must be called in coroutine..";
-    auto& v = _pools[gSched->id()];
-    if (!v) { v = co::make<V>(1024); assert(v); }
-    if (!v->empty()) {
-        return v->pop_back();
-    } else {
-        return _ccb ? _ccb() : 0;
-    }
-}
-
-inline void PoolImpl::push(void* p) {
-    if (!p) return; // ignore null pointer
-    CHECK(gSched) << "must be called in coroutine..";
-    auto& v = _pools[gSched->id()];
-    if (!v) { v = co::make<V>(1024); assert(v); }
-    if (v->size() < _maxcap || !_dcb) {
-        v->push_back(p);
-    } else {
-        _dcb(p);
-    }
-}
-
-// Create n coroutines to clear all the pools, n is number of schedulers.
-// clear() blocks untils all the coroutines are done.
-void PoolImpl::clear() {
-    if (co::is_active()) {
-        auto& scheds = co::schedulers();
-        wait_group wg;
-        wg.add((uint32)scheds.size());
-
-        for (auto& s : scheds) {
-            s->go([this, wg]() {
-                auto& v = this->_pools[gSched->id()];
-                if (v) {
-                    if (this->_dcb) for (auto& e : *v) this->_dcb(e);
-                    co::del(v); v = nullptr;
-                }
-                wg.done();
-            });
-        }
-
-        wg.wait();
-    } else {
-        for (auto& v : _pools) {
-            if (v) {
-                if (this->_dcb) for (auto& e : *v) this->_dcb(e);
-                co::del(v); v = nullptr;
-            }
-        }
-    }
-}
-
-inline size_t PoolImpl::size() const {
-    CHECK(gSched) << "must be called in coroutine..";
-    auto& v = _pools[gSched->id()];
-    return v ? v->size() : 0;
-}
-
-// memory: |4(refn)|4|PoolImpl|
-Pool::Pool() {
-    _p = (uint32*) co::alloc(sizeof(PoolImpl) + 8);
-    _p[0] = 1;
-    new (_p + 2) PoolImpl();
-}
-
-Pool::~Pool() {
-    if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
-        ((PoolImpl*)(_p + 2))->~PoolImpl();
-        co::free(_p, sizeof(PoolImpl) + 8);
-    }
-}
-
-Pool::Pool(std::function<void*()>&& ccb, std::function<void(void*)>&& dcb, size_t cap) {
-    _p = (uint32*) co::alloc(sizeof(PoolImpl) + 8);
-    _p[0] = 1;
-    new (_p + 2) PoolImpl(std::move(ccb), std::move(dcb), cap);
-}
-
-void* Pool::pop() const {
-    return ((PoolImpl*)(_p + 2))->pop();
-}
-
-void Pool::push(void* p) const {
-    ((PoolImpl*)(_p + 2))->push(p);
-}
-
-void Pool::clear() const {
-    ((PoolImpl*)(_p + 2))->clear();
-}
-
-size_t Pool::size() const {
-    return ((PoolImpl*)(_p + 2))->size();
-}
-
 namespace xx {
+
+__thread bool g_done = false;
 
 class pipe_impl {
   public:
-    pipe_impl(uint32 buf_size, uint32 blk_size, uint32 ms, pipe::F&& f)
-        : _f(std::move(f)), _buf_size(buf_size), _blk_size(blk_size), 
-          _rx(0), _wx(0), _ms(ms), _full(false), _has_cv(false), _timeout(false) {
+    pipe_impl(uint32 buf_size, uint32 blk_size, uint32 ms, pipe::cpmv_t&& c, pipe::destruct_t&& d)
+        : _c(std::move(c)), _d(std::move(d)), _buf_size(buf_size), _blk_size(blk_size), 
+          _rx(0), _wx(0), _ms(ms), _full(false), _has_cv(false), _closed(0) {
         _buf = (char*) co::alloc(_buf_size);
     }
 
@@ -626,9 +508,11 @@ class pipe_impl {
         if (_has_cv) xx::cv_free(&_cv);
     }
 
-    void read(void* p, int v);
+    void read(void* p);
     void write(void* p, int v);
-    bool timeout() const { return _timeout; }
+    bool done() const { return g_done; }
+    void close();
+    bool is_closed() const { return atomic_load(&_closed, mo_relaxed); }
 
     struct waitx {
         co::Coroutine* co;
@@ -636,7 +520,7 @@ class pipe_impl {
             uint8 state;
             struct {
                 uint8 state;
-                uint8 done;
+                uint8 done; // 1: ok, 2: channel closed
                 uint8 v;
             } x;
             void* dummy;
@@ -658,19 +542,21 @@ class pipe_impl {
         }
         w->co = co;
         w->state = st_wait;
-        w->x.done = false;
+        w->x.done = 0;
         return w;
     }
 
   private:
-    void _read_block(void* p, int v) {
-        _f(p, _buf + _rx, v);
+    void _read_block(void* p) {
+        _d(p);
+        _c(p, _buf + _rx, 1);
+        _d(_buf + _rx);
         _rx += _blk_size;
         if (_rx == _buf_size) _rx = 0;
     }
 
     void _write_block(void* p, int v) {
-        _f(_buf + _wx, p, v);
+        _c(_buf + _wx, p, v);
         _wx += _blk_size;
         if (_wx == _buf_size) _wx = 0;
     }
@@ -678,7 +564,8 @@ class pipe_impl {
   private:
     xx::mutex _m;
     xx::cv_t _cv;
-    xx::pipe::F _f;
+    xx::pipe::cpmv_t _c;
+    xx::pipe::destruct_t _d;
     co::deque<waitx*> _wq;
     char* _buf;       // buffer
     uint32 _buf_size; // buffer size
@@ -688,23 +575,23 @@ class pipe_impl {
     uint32 _ms;       // timeout in milliseconds
     bool _full;       // 0: not full, 1: full
     bool _has_cv;
-    bool _timeout;
+    uint8 _closed;
 };
 
-void pipe_impl::read(void* p, int v) {
+void pipe_impl::read(void* p) {
     auto s = gSched;
     _m.lock();
 
     // buffer is neither empty nor full
     if (_rx != _wx) {
-        this->_read_block(p, v);
+        this->_read_block(p);
         _m.unlock();
         goto done;
     }
 
     // buffer is full
     if (_full) {
-        this->_read_block(p, v);
+        this->_read_block(p);
 
         while (!_wq.empty()) {
             waitx* w = _wq.front(); // wait for write
@@ -712,19 +599,20 @@ void pipe_impl::read(void* p, int v) {
 
             // TODO: is mo_relaxed safe here?
             if (atomic_bool_cas(&w->state, st_wait, st_ready, mo_relaxed, mo_relaxed)) {
-                this->_write_block(w->buf, w->x.v);
-
+                this->_write_block(w->buf, w->x.v & 1);
+                if (w->x.v & 2) _d(w->buf);
+                w->x.done = 1;
                 if (w->co) {
                     _m.unlock();
                     ((co::SchedulerImpl*) w->co->s)->add_ready_task(w->co);
                 } else {
-                    w->x.done = true;
                     _m.unlock();
                     xx::cv_notify_all(&_cv);
                 }
                 goto done;
 
             } else { /* timeout */
+                if (w->x.v & 2) _d(w->buf);
                 co::free(w, w->len);
             }
         }
@@ -735,9 +623,11 @@ void pipe_impl::read(void* p, int v) {
     }
 
     // buffer is empty
+    if (this->is_closed()) { _m.unlock(); goto enod; }
     if (s) {
         auto co = s->running();
         waitx* w = this->create_waitx(co, p);
+        w->x.v = (w->buf != p ? 2 : 0);
         _wq.push_back(w);
         _m.unlock();
 
@@ -749,11 +639,21 @@ void pipe_impl::read(void* p, int v) {
 
         co->waitx = 0;
         if (!s->timeout()) {
-            if (w->buf != p) _f(p, w->buf, v);
+            if (w->x.done == 1) {
+                if (w->buf != p) {
+                    _d(p);
+                    _c(p, w->buf, 1); // mv
+                    _d(w->buf);
+                }
+                co::free(w, w->len);
+                goto done;
+            }
+
+            assert(w->x.done == 2); // channel closed
             co::free(w, w->len);
-            goto done;
+            goto enod;
         }
-        goto timeout;
+        goto enod;
 
     } else {
         bool tmout = false;
@@ -767,38 +667,34 @@ void pipe_impl::read(void* p, int v) {
             } else {
                 tmout = !xx::cv_wait(&_cv, _m.native_handle(), _ms);
             }
-            if (!tmout) {
-                if (w->x.done) {
+            if (!tmout || !atomic_bool_cas(&w->state, st_wait, st_timeout, mo_relaxed, mo_relaxed)) {
+                const auto x = w->x.done;
+                if (x) {
                     _m.unlock();
                     co::free(w, w->len);
-                    goto done;
+                    if (x == 1) goto done;
+                    goto enod; // x == 2, channel closed
                 }
             } else {
-                if (atomic_bool_cas(&w->state, st_wait, st_timeout, mo_relaxed, mo_relaxed)) {
-                    _m.unlock();
-                    goto timeout;
-                } else {
-                    assert(w->x.done);
-                    _m.unlock();
-                    co::free(w, w->len);
-                    goto done;
-                }
+                _m.unlock();
+                goto enod;
             }
         }
     }
 
-  timeout:
-    if (!_timeout) _timeout = true;
+  enod:
+    g_done = false;
     return;
   done:
-    if (_timeout) _timeout = false;
+    g_done = true;
 }
 
 void pipe_impl::write(void* p, int v) {
     auto s = gSched;
     _m.lock();
+    if (this->is_closed()) { _m.unlock(); goto enod; }
 
-    // buffer is non-empty and non-full
+    // buffer is neither empty nor full
     if (_rx != _wx) {
         this->_write_block(p, v);
         if (_rx == _wx) _full = true;
@@ -814,13 +710,15 @@ void pipe_impl::write(void* p, int v) {
 
             // TODO: is mo_relaxed safe here?
             if (atomic_bool_cas(&w->state, st_wait, st_ready, mo_relaxed, mo_relaxed)) {
+                w->x.done = 1;
                 if (w->co) {
+                    if (!w->x.v) _d(w->buf);
+                    _c(w->buf, p, v);
                     _m.unlock();
-                    _f(w->buf, p, v);
                     ((co::SchedulerImpl*) w->co->s)->add_ready_task(w->co);
                 } else {
-                    _f(w->buf, p, v);
-                    w->x.done = true;
+                    _d(w->buf);
+                    _c(w->buf, p, v);
                     _m.unlock();
                     xx::cv_notify_all(&_cv);
                 }
@@ -841,10 +739,17 @@ void pipe_impl::write(void* p, int v) {
     if (s) {
         auto co = s->running();
         waitx* w = this->create_waitx(co, p);
-        if (w->buf != p) _f(w->buf, p, v);
-        w->x.v = (uint8)v;
+        if (w->buf != p) {
+            _c(w->buf, p, v);
+            w->x.v = 1 | 2;
+        } else {
+            w->x.v = (uint8)v;
+        }
         _wq.push_back(w);
         _m.unlock();
+
+        if (co->s != s) co->s = s;
+        co->waitx = (co::waitx_t*)w;
 
         if (_ms != (uint32)-1) s->add_timer(_ms);
         s->yield();
@@ -854,7 +759,7 @@ void pipe_impl::write(void* p, int v) {
             co::free(w, w->len);
             goto done;
         }
-        goto timeout;
+        goto enod; // timeout
 
     } else {
         bool tmout = false;
@@ -869,53 +774,203 @@ void pipe_impl::write(void* p, int v) {
             } else {
                 tmout = !xx::cv_wait(&_cv, _m.native_handle(), _ms);
             }
-            if (!tmout) {
+            if (!tmout || !atomic_bool_cas(&w->state, st_wait, st_timeout, mo_relaxed, mo_relaxed)) {
                 if (w->x.done) {
+                    assert(w->x.done == 1);
                     _m.unlock();
                     co::free(w, w->len);
                     goto done;
                 }
             } else {
-                if (atomic_bool_cas(&w->state, st_wait, st_timeout, mo_relaxed, mo_relaxed)) {
-                    _m.unlock();
-                    goto timeout;
-                }
-                assert(w->x.done);
                 _m.unlock();
-                co::free(w, w->len);
-                goto done;
+                goto enod;
             }
         }
     }
 
-  timeout:
-    if (!_timeout) _timeout = true;
+  enod:
+    g_done = false;
     return;
   done:
-    if (_timeout) _timeout = false;
+    g_done = true;
 }
 
-pipe::pipe(uint32 buf_size, uint32 blk_size, uint32 ms, pipe::F&& f) {
+void pipe_impl::close() {
+    const auto x = atomic_cas(&_closed, 0, 1, mo_relaxed, mo_relaxed);
+    if (x == 0) {
+        xx::mutex_guard g(_m);
+        if (_rx == _wx && !_full) { /* empty */
+            while (!_wq.empty()) {
+                waitx* w = _wq.front(); // wait for read
+                _wq.pop_front();
+
+                if (atomic_bool_cas(&w->state, st_wait, st_ready, mo_relaxed, mo_relaxed)) {
+                    w->x.done = 2; // channel closed
+                    if (w->co) {
+                        ((co::SchedulerImpl*) w->co->s)->add_ready_task(w->co);
+                    } else {
+                        xx::cv_notify_all(&_cv);
+                    }
+                } else {
+                    co::free(w, w->len);
+                }
+            }
+        }
+        atomic_store(&_closed, 2, mo_relaxed);
+
+    } else if (x == 1) {
+        while (atomic_load(&_closed, mo_relaxed) != 2) co::sleep(1);
+    }
+}
+
+pipe::pipe(uint32 buf_size, uint32 blk_size, uint32 ms, pipe::cpmv_t&& c, pipe::destruct_t&& d) {
     _p = (uint32*) co::alloc(sizeof(pipe_impl) + 8);
     _p[0] = 1;
-    new (_p + 2) pipe_impl(buf_size, blk_size, ms, std::move(f));
+    new (_p + 2) pipe_impl(buf_size, blk_size, ms, std::move(c), std::move(d));
 }
 
 pipe::~pipe() {
     if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
         ((pipe_impl*)(_p + 2))->~pipe_impl();
         co::free(_p, sizeof(pipe_impl) + 8);
+        _p = 0;
     }
 }
 
-void pipe::read(void* p, int v) const {
-    ((pipe_impl*)(_p + 2))->read(p, v);
+void pipe::read(void* p) const {
+    ((pipe_impl*)(_p + 2))->read(p);
 }
 
 void pipe::write(void* p, int v) const {
     ((pipe_impl*)(_p + 2))->write(p, v);
 }
 
+void pipe::close() const {
+    ((pipe_impl*)(_p + 2))->close();
+}
+
+bool pipe::is_closed() const {
+    return ((pipe_impl*)(_p + 2))->is_closed();
+}
+
+bool pipe::done() const {
+    return ((pipe_impl*)(_p + 2))->done();
+}
+
 } // xx
+
+class pool_impl {
+  public:
+    typedef co::array<void*> V;
+
+    pool_impl()
+        : _pools(co::scheduler_num(), 0), _maxcap((size_t)-1) {
+    }
+
+    pool_impl(std::function<void*()>&& ccb, std::function<void(void*)>&& dcb, size_t cap)
+        : _pools(co::scheduler_num(), 0), _maxcap(cap), 
+          _ccb(std::move(ccb)), _dcb(std::move(dcb)) {
+    }
+
+    ~pool_impl() { this->clear(); }
+
+    void* pop();
+
+    void push(void* p);
+
+    void clear();
+
+    size_t size() const;
+
+  private:
+    co::array<V> _pools;
+    size_t _maxcap;
+    std::function<void*()> _ccb;
+    std::function<void(void*)> _dcb;
+};
+
+inline void* pool_impl::pop() {
+    auto s = gSched;
+    CHECK(s) << "must be called in coroutine..";
+    auto& v = _pools[s->id()];
+    return !v.empty() ? v.pop_back() : (_ccb ? _ccb() : nullptr);
+}
+
+inline void pool_impl::push(void* p) {
+    if (p) {
+        auto s = gSched;
+        CHECK(s) << "must be called in coroutine..";
+        auto& v = _pools[s->id()];
+        (v.size() < _maxcap || !_dcb) ? v.push_back(p) : _dcb(p);
+    }
+}
+
+// Create n coroutines to clear all the pools, n is number of schedulers.
+// clear() blocks untils all the coroutines are done.
+void pool_impl::clear() {
+    if (co::is_active()) {
+        auto& scheds = co::schedulers();
+        co::wait_group wg((uint32)scheds.size());
+
+        for (auto& s : scheds) {
+            s->go([this, wg]() {
+                auto& v = this->_pools[gSched->id()];
+                if (this->_dcb) for (auto& e : v) this->_dcb(e);
+                v.clear();
+                wg.done();
+            });
+        }
+
+        wg.wait();
+    } else {
+        for (auto& v : _pools) {
+            if (this->_dcb) for (auto& e : v) this->_dcb(e);
+            v.clear();
+        }
+    }
+}
+
+inline size_t pool_impl::size() const {
+    auto s = gSched;
+    CHECK(s) << "must be called in coroutine..";
+    return _pools[s->id()].size();
+}
+
+// memory: |4(refn)|4|pool_impl|
+pool::pool() {
+    _p = (uint32*) co::alloc(sizeof(pool_impl) + 8);
+    _p[0] = 1;
+    new (_p + 2) pool_impl();
+}
+
+pool::~pool() {
+    if (_p && atomic_dec(_p, mo_acq_rel) == 0) {
+        ((pool_impl*)(_p + 2))->~pool_impl();
+        co::free(_p, sizeof(pool_impl) + 8);
+        _p = 0;
+    }
+}
+
+pool::pool(std::function<void*()>&& ccb, std::function<void(void*)>&& dcb, size_t cap) {
+    _p = (uint32*) co::alloc(sizeof(pool_impl) + 8);
+    _p[0] = 1;
+    new (_p + 2) pool_impl(std::move(ccb), std::move(dcb), cap);
+}
+
+void* pool::pop() const {
+    return ((pool_impl*)(_p + 2))->pop();
+}
+
+void pool::push(void* p) const {
+    ((pool_impl*)(_p + 2))->push(p);
+}
+
+void pool::clear() const {
+    ((pool_impl*)(_p + 2))->clear();
+}
+
+size_t pool::size() const {
+    return ((pool_impl*)(_p + 2))->size();
+}
 
 } // co

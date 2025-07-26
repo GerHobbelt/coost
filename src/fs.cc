@@ -148,13 +148,7 @@ const char* file::path() const {
 
 bool file::open(const char* path, char mode) {
     // make sure __sys_api(close, read, write) are not NULL
-    static bool kx = []() {
-        if (__sys_api(close) == 0) ::close(-1);
-        if (__sys_api(read) == 0)  { auto r = ::read(-1, 0, 0);  (void)r; }
-        if (__sys_api(write) == 0) { auto r = ::write(-1, 0, 0); (void)r; }
-        return true;
-    }();
-    (void) kx;
+    static bool _ = []() { co::init_hook(); return true; }(); (void)_;
 
     this->close();
     if (!path || !*path) return false;
@@ -188,8 +182,7 @@ void file::seek(int64 off, int whence) {
     static int seekfrom[3] = { SEEK_SET, SEEK_CUR, SEEK_END };
     fctx* p = (fctx*)_p;
     if (p && p->fd != nullfd) {
-        whence = seekfrom[whence];
-        ::lseek(p->fd, off, whence);
+        ::lseek(p->fd, off, seekfrom[whence]);
     }
 }
 
