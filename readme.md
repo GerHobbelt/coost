@@ -16,7 +16,7 @@ English | [简体中文](readme_cn.md)
 
 **[coost](https://github.com/idealvin/coost)** is an elegant and efficient cross-platform C++ base library. Its goal is to create a sword of C++ to make C++ programming easy and enjoyable.
 
-The original name of coost is **co** or cocoyaxi. It is like [boost](https://www.boost.org/), but more lightweight, **the static library built on linux or mac is only about 1MB in size**. However, it still provides enough powerful features:
+Coost, **co** for short, is like [boost](https://www.boost.org/), but more lightweight, **the static library built on linux or mac is only about 1MB in size**. However, it still provides enough powerful features:
 
 <table>
 <tr><td width=33% valign=top>
@@ -104,6 +104,7 @@ void f() {
 #include "co/cout.h"
 
 DEF_bool(x, false, "x");
+DEF_bool(y, true, "y");
 DEF_bool(debug, false, "dbg", d);
 DEF_uint32(u, 0, "xxx");
 DEF_string(s, "", "xx");
@@ -321,11 +322,10 @@ for (auto& s : co::scheds()) {
 
 ### 3.6 network programming
 
-coost provides a coroutine-based network programming framework, which can be roughly divided into 3 parts:
+coost provides a coroutine-based network programming framework:
 
-- **[coroutineized socket API](https://coostdocs.github.io/en/co/coroutine/#coroutineized-socket-api)**, similar in form to the system socket API, users familiar with socket programming can easily write high-performance network programs in a synchronous manner.
+- **[coroutineized socket API](https://coostdocs.github.io/en/co/net/sock/)**, similar in form to the system socket API, users familiar with socket programming can easily write high-performance network programs in a synchronous manner.
 - [TCP](https://coostdocs.github.io/en/co/net/tcp/), [HTTP](https://coostdocs.github.io/en/co/net/http/), [RPC](https://coostdocs.github.io/en/co/net/rpc/) and other high-level network programming components, compatible with IPv6, also support SSL, it is more convenient to use than socket API.
-- **[System API hook](https://coostdocs.github.io/en/co/coroutine/#system-api-hook)**, with which, third-party network libraries can be used directly in coroutines.
 
 
 **RPC server**
@@ -430,11 +430,11 @@ go(f);
 
 - [test](https://github.com/idealvin/coost/tree/master/test)
 
-  Some test code, each `.cc` file will be compiled into a separate test program.
+  Test code, each `.cc` file will be compiled into a separate test program.
 
 - [unitest](https://github.com/idealvin/coost/tree/master/unitest)
 
-  Some unit test code, each `.cc` file corresponds to a different test unit, and all code will be compiled into a single test program.
+  Unit test code, each `.cc` file corresponds to a different test unit, and all code will be compiled into a single test program.
 
 - [gen](https://github.com/idealvin/coost/tree/master/gen)
 
@@ -549,28 +549,23 @@ make -j8
 ```
 
 
-#### 5.3.5 Install libco from vcpkg
+#### 5.3.5 Find coost in Cmake
+
+```cmake
+find_package(coost REQUIRED CONFIG)
+target_link_libraries(userTarget coost::co)
+```
+
+
+#### 5.3.6 vcpkg & conan
 
 ```sh
 vcpkg install coost:x64-windows
 
 # HTTP & SSL support
 vcpkg install coost[libcurl,openssl]:x64-windows
-```
 
-
-#### 5.3.6 Install libco from conan
-
-```sh
 conan install coost
-```
-
-
-#### 5.3.7 Find coost in Cmake
-
-```cmake
-find_package(coost REQUIRED CONFIG)
-target_link_libraries(userTarget coost::co)
 ```
 
 

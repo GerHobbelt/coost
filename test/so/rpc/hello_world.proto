@@ -1,6 +1,6 @@
 package xx
 
 service HelloWorld {  
-    hello,
-    world,
+    hello
+    world
 }

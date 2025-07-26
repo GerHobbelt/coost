@@ -33,6 +33,12 @@ BM_group(rand) {
         x = co::rand(seed);
     );
     BM_use(x);
+
+    fastring s;
+    BM_add(co::randstr)(
+        s = co::randstr();
+    );
+    BM_use(s);
 }
 
 BM_group(malloc) {

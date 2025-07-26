@@ -6,12 +6,23 @@
 #include <assert.h>
 #include <cstddef>
 #include <stdlib.h>
+#include <mutex>
 #include <new>
 #include <utility>
 #include <type_traits>
 #include <functional>
 
 namespace co {
+namespace xx {
+
+struct __coapi Initializer {
+    Initializer();
+    ~Initializer();
+};
+
+static Initializer g_initializer;
+
+} // xx
 
 constexpr size_t cache_line_size = L1_CACHE_LINE_SIZE;
 
@@ -32,6 +43,11 @@ __coapi void free(void* p, size_t size);
 //   - if p is NULL, it is equal to co::alloc(new_size)
 //   - @new_size must be greater than @old_size
 __coapi void* realloc(void* p, size_t old_size, size_t new_size);
+
+// Like realloc, but will not create a new allocation if there is not 
+// enough room to enlarge the memory allocation pointed to by p.
+// The return value is p or NULL.
+__coapi void* try_realloc(void* p, size_t old_size, size_t new_size);
 
 __coapi char* strdup(const char* s);
 
@@ -155,7 +171,7 @@ class unique {
         if (_p) {
             static_cast<void>(sizeof(T));
             _p->~T();
-            co::free(_s, _s->n);
+            co::free((char*)_p - _s[-2], _s[-1]);
             _p = 0;
         }
     }
@@ -171,20 +187,23 @@ class unique {
     }
 
   private:
-    struct S { T o; size_t n; };
-    union { S* _s; T* _p; };
+    union { T* _p; uint32* _s; };
 };
 
 template<typename T, typename... Args>
 inline unique<T> make_unique(Args&&... args) {
-    struct S { T o; size_t n; };
-    S* const s = (S*) co::alloc(sizeof(S));
+    struct S { uint32 o; uint32 n; T t; };
+    static_assert(alignof(S) <= 1024, "");
+    const size_t off = (size_t) &((S*)0)->t;
+    S* const s = (S*) co::alloc(sizeof(S), alignof(S));
+    T* const t = &s->t;
     if (s) {
-        new(s) T(std::forward<Args>(args)...);
-        s->n = sizeof(S);
+        new(t) T(std::forward<Args>(args)...);
+        ((uint32*)t)[-1] = sizeof(S);
+        ((uint32*)t)[-2] = (uint32)off;
     }
     unique<T> x;
-    *(void**)&x = s;
+    *(void**)&x = t;
     return x;
 }
 
@@ -201,7 +220,7 @@ class shared {
 
     shared(const shared& x) noexcept {
         _s = x._s;
-        if (_s) atomic_inc(&_s->refn, mo_relaxed);
+        if (_s) this->_ref();
     }
 
     shared(shared&& x) noexcept {
@@ -226,7 +245,7 @@ class shared {
     > = 0>
     shared(const shared<X>& x) noexcept {
         _p = x.get();
-        if (_s) atomic_inc(&_s->refn, mo_relaxed);
+        if (_s) this->_ref();
     }
 
     template<typename X, god::if_t<
@@ -263,17 +282,17 @@ class shared {
 
     void reset() {
         if (_s) {
-            if (atomic_dec(&_s->refn, mo_acq_rel) == 0) {
+            if (this->_unref() == 0) {
                 static_cast<void>(sizeof(T));
                 _p->~T();
-                co::free(_s, _s->size);
+                co::free((char*)_p - _s[-2], _s[-1]);
             }
             _p = 0;
         }
     }
 
     size_t ref_count() const noexcept {
-        return _s ? atomic_load(&_s->refn, mo_relaxed) : 0;
+        return _s ? atomic_load(&_s[-3], mo_relaxed) : 0;
     }
 
     size_t use_count() const noexcept {
@@ -291,21 +310,32 @@ class shared {
     }
 
   private:
-    struct S { T o; uint32 refn; uint32 size; };
-    union { S* _s; T* _p; };
+    union { T* _p; uint32* _s; };
+
+    void _ref() {
+        atomic_inc(&_s[-3], mo_relaxed);
+    }
+
+    uint32 _unref() {
+        return atomic_dec(&_s[-3], mo_acq_rel);
+    }
 };
 
 template<typename T, typename... Args>
 inline shared<T> make_shared(Args&&... args) {
-    struct S { T o; uint32 refn; uint32 size; };
-    S* const s = (S*) co::alloc(sizeof(S));
+    struct S { uint32 r; uint32 o; uint32 n; T t; };
+    static_assert(alignof(S) <= 1024, "");
+    const size_t off = (size_t) &((S*)0)->t;
+    S* const s = (S*) co::alloc(sizeof(S), alignof(S));
+    T* const t = &s->t;
     if (s) {
-        new(s) T(std::forward<Args>(args)...);
-        s->refn = 1;
-        s->size = sizeof(S);
+        new(t) T(std::forward<Args>(args)...);
+        ((uint32*)t)[-1] = sizeof(S);
+        ((uint32*)t)[-2] = (uint32)off;
+        ((uint32*)t)[-3] = 1;
     }
     shared<T> x;
-    *(void**)&x = s;
+    *(void**)&x = t;
     return x;
 }
 

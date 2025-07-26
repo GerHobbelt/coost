@@ -1,6 +1,6 @@
 package xx
 
 service HelloAgain {  
-    hello,
-    again,
+    hello
+    again
 }

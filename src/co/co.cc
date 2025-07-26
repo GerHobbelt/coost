@@ -8,6 +8,9 @@
 #include <time.h>         // for clock_gettime
 #else
 #include <sys/time.h>     // for gettimeofday
+#ifndef __APPLE__
+#include <pthread_np.h>   // for getting proper threadid on modern BSDs but not Mac OSX
+#endif
 #endif
 #endif
 
@@ -24,8 +27,6 @@ inline void cv_wait(cv_t* c, mutex_t* m) { SleepConditionVariableCS(c, m, INFINI
 inline bool cv_wait(cv_t* c, mutex_t* m, uint32 ms) { return SleepConditionVariableCS(c, m, ms) == TRUE; }
 inline void cv_notify_one(cv_t* c) { WakeConditionVariable(c); }
 inline void cv_notify_all(cv_t* c) { WakeAllConditionVariable(c); }
-
-uint32 thread_id() { return GetCurrentThreadId(); }
 
 class mutex {
   public:
@@ -91,6 +92,8 @@ inline void cv_wait(cv_t* c, mutex_t* m) { pthread_cond_wait(c, m); }
 inline void cv_notify_one(cv_t* c) { pthread_cond_signal(c); }
 inline void cv_notify_all(cv_t* c) { pthread_cond_broadcast(c); }
 
+__thread uint32 g_tid;
+
 #ifdef __linux__
 #ifndef SYS_gettid
 #define SYS_gettid __NR_gettid
@@ -100,7 +103,11 @@ uint32 thread_id() { return syscall(SYS_gettid); }
 #else /* for mac, bsd.. */
 uint32 thread_id() {
     uint64 x;
+#ifdef __APPLE__
     pthread_threadid_np(0, &x);
+#else
+    x = pthread_getthreadid_np();
+#endif
     return (uint32)x;
 }
 #endif
