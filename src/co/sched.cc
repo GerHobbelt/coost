@@ -2,8 +2,9 @@
 #include "co/os.h"
 #include "co/rand.h"
 
-DEF_uint32(co_sched_num, os::cpunum(), ">>#1 number of coroutine scheds, default: os::cpunum()");
-DEF_uint32(co_stack_size, 1024 * 1024, ">>#1 size of the stack shared by coroutines, default: 1M");
+DEF_uint32(co_sched_num, os::cpunum(), ">>#1 number of coroutine schedulers");
+DEF_uint32(co_stack_num, 8, ">>#1 number of stacks per scheduler, must be power of 2");
+DEF_uint32(co_stack_size, 1024 * 1024, ">>#1 size of the stack shared by coroutines");
 DEF_bool(co_sched_log, false, ">>#1 print logs for coroutine schedulers");
 
 #ifdef _MSC_VER
@@ -24,25 +25,34 @@ namespace xx {
 
 __thread Sched* gSched = 0;
 
-Sched::Sched(uint32 id, uint32 sched_num, uint32 stack_size)
-    : _wait_ms((uint32)-1), _id(id), _sched_num(sched_num), 
-      _stack_size(stack_size), _running(0), _co_pool(), 
-      _cputime(0), _stop(false), _timeout(false) {
-    _epoll = co::make<Epoll>(id);
-    _stack = (Stack*) co::zalloc(8 * sizeof(Stack));
-    _main_co = _co_pool.pop(); // coroutine with zero id is reserved for _main_co
+Sched::Sched(uint32 id, uint32 sched_num, uint32 stack_num, uint32 stack_size)
+    : _cputime(0), _task_mgr(), _timer_mgr(), _wait_ms(-1), _timeout(false),
+      _bufs(128), _co_pool(), _running(0), _id(id), _sched_num(sched_num),
+      _stack_num(stack_num), _stack_size(stack_size) {
+    new(&_x.ev) co::sync_event();
+    _x.epoll = co::make<Epoll>(id);
+    _x.stopped = false;
+    _main_co = _co_pool.pop(); // id 0 is reserved for _main_co
+    _main_co->sched = this;
+    _stack = (Stack*) co::zalloc(stack_num * sizeof(Stack));
 }
 
 Sched::~Sched() {
-    this->stop();
-    co::del(_epoll);
-    co::free(_stack, 8 * sizeof(Stack));
+    this->stop(128);
+    co::del(_x.epoll);
+    _x.ev.~sync_event();
+    for (size_t i = 0; i < _bufs.size(); ++i) {
+        void* p = _bufs[i];
+        god::cast<Buffer*>(&p)->reset();
+    }
+    _bufs.clear();
+    co::free(_stack, _stack_num * sizeof(Stack));
 }
 
-void Sched::stop() {
-    if (atomic_swap(&_stop, true, mo_acq_rel) == false) {
-        _epoll->signal();
-        _ev.wait(128); // wait at most 128ms
+void Sched::stop(uint32 ms) {
+    if (atomic_swap(&_x.stopped, true, mo_acq_rel) == false) {
+        _x.epoll->signal();
+        ms == (uint32)-1 ? _x.ev.wait() : (void)_x.ev.wait(ms);
     }
 }
 
@@ -50,17 +60,17 @@ void Sched::main_func(tb_context_from_t from) {
     ((Coroutine*)from.priv)->ctx = from.ctx;
   #ifdef _MSC_VER
     __try {
-        gSched->running()->cb->run(); // run the coroutine function
+        ((Coroutine*)from.priv)->sched->running()->cb->run();
     } __except(_co_on_exception(GetExceptionInformation())) {
     }
   #else
-    gSched->running()->cb->run(); // run the coroutine function
+    ((Coroutine*)from.priv)->sched->running()->cb->run();
   #endif // _WIN32
     tb_context_jump(from.ctx, 0); // jump back to the from context
 }
 
 /*
- *  sched thread:
+ *  scheduling thread:
  *
  *    resume(co) -> jump(co->ctx, main_co)
  *       ^             |
@@ -71,8 +81,9 @@ void Sched::main_func(tb_context_from_t from) {
  *       <-------- co->cb->run():  run on _stack
  */
 void Sched::resume(Coroutine* co) {
+    CHECK_EQ(co->sched, this);
     tb_context_from_t from;
-    Stack* s = &_stack[co->sid];
+    Stack* const s = co->stack;
     _running = co;
     if (s->p == 0) {
         s->p = (char*) co::alloc(_stack_size);
@@ -96,14 +107,14 @@ void Sched::resume(Coroutine* co) {
         }
 
         // resume suspended coroutine
-        SCHEDLOG << "resume co: " << co << ", id: " <<  co->id << ", stack: " << co->stack.size();
+        SCHEDLOG << "resume co: " << co << " id: " <<  co->id << " stack: " << co->buf.size();
         if (s->co != co) {
             this->save_stack(s->co);
-            CHECK(s->top == (char*)co->ctx + co->stack.size());
-            memcpy(co->ctx, co->stack.data(), co->stack.size()); // restore stack data
+            CHECK_EQ(s->top, (char*)co->ctx + co->buf.size());
+            memcpy(co->ctx, co->buf.data(), co->buf.size()); // restore stack data
             s->co = co;
         }
-        from = tb_context_jump(co->ctx, _main_co); // jump back to where the user called yiled()
+        from = tb_context_jump(co->ctx, _main_co); // jump back to where yiled() was called
     }
 
     if (from.priv) {
@@ -113,58 +124,58 @@ void Sched::resume(Coroutine* co) {
         SCHEDLOG << "yield co: " << _running << " id: " << _running->id;
     } else {
         // the coroutine has terminated, recycle it
-        this->recycle();
+        _running->stack->co = 0;
+        this->recycle(_running);
     }
 }
 
 void Sched::loop() {
     gSched = this;
-    co::array<Closure*> new_tasks;
-    co::array<Coroutine*> ready_tasks;
-    Timer timer;
+    co::array<Closure*> new_tasks(512);
+    co::array<Coroutine*> ready_tasks(512);
+    co::Timer timer;
 
-    while (!_stop) {
-        int n = _epoll->wait(_wait_ms);
-        if (_stop) break;
+    while (!_x.stopped) {
+        int n = _x.epoll->wait(_wait_ms);
+        if (_x.stopped) break;
 
         if (unlikely(n == -1)) {
-            if (errno != EINTR) {
-                ELOG << "epoll wait error: " << co::strerror();
-            }
+            if (co::error() != EINTR) ELOG << "epoll wait error: " << co::strerror();
             continue;
         }
 
-        timer.restart();
+        if (_sched_num > 1) timer.restart();
+        SCHEDLOG << "> check I/O tasks ready to resume, num: " << n;
+
         for (int i = 0; i < n; ++i) {
-            auto& ev = (*_epoll)[i];
-            if (_epoll->is_ev_pipe(ev)) {
-                _epoll->handle_ev_pipe();
+            auto& ev = (*_x.epoll)[i];
+            if (_x.epoll->is_ev_pipe(ev)) {
+                _x.epoll->handle_ev_pipe();
                 continue;
             }
 
           #if defined(_WIN32)
-            auto info = (IoEvent::PerIoInfo*) ((void**)ev.lpOverlapped - 2);
+            auto info = xx::per_io_info(ev.lpOverlapped);
             auto co = (Coroutine*) info->co;
-            // TODO: is mo_relaxed safe here?
             if (atomic_bool_cas(&info->state, st_wait, st_ready, mo_relaxed, mo_relaxed)) {
                 info->n = ev.dwNumberOfBytesTransferred;
-                if (co->s == this) {
+                if (co->sched == this) {
                     this->resume(co);
                 } else {
-                    ((Sched*)co->s)->add_ready_task(co);
+                    co->sched->add_ready_task(co);
                 }
             } else {
                 co::free(info, info->mlen);
             }
           #elif defined(__linux__)
             int32 rco = 0, wco = 0;
-            auto& ctx = co::get_sock_ctx(_epoll->user_data(ev));
+            auto& ctx = co::get_sock_ctx(_x.epoll->user_data(ev));
             if ((ev.events & EPOLLIN)  || !(ev.events & EPOLLOUT)) rco = ctx.get_ev_read(this->id());
             if ((ev.events & EPOLLOUT) || !(ev.events & EPOLLIN))  wco = ctx.get_ev_write(this->id());
-            if (rco) this->resume(_co_pool[rco]);
-            if (wco) this->resume(_co_pool[wco]);
+            if (rco) this->resume(&_co_pool[rco]);
+            if (wco) this->resume(&_co_pool[wco]);
           #else
-            this->resume((Coroutine*)_epoll->user_data(ev));
+            this->resume((Coroutine*)_x.epoll->user_data(ev));
           #endif
         }
 
@@ -173,17 +184,27 @@ void Sched::loop() {
             _task_mgr.get_all_tasks(new_tasks, ready_tasks);
 
             if (!new_tasks.empty()) {
-                SCHEDLOG << ">> resume new tasks, num: " << new_tasks.size();
-                for (size_t i = 0; i < new_tasks.size(); ++i) {
+                const size_t c = new_tasks.capacity();
+                const size_t s = new_tasks.size();
+                SCHEDLOG << ">> resume new tasks, num: " << s;
+                for (size_t i = 0; i < s; ++i) {
                     this->resume(this->new_coroutine(new_tasks[i]));
+                }
+                if (c >= 8192 && s <= (c >> 1)) {
+                    co::array<Closure*>(s).swap(new_tasks);
                 }
                 new_tasks.clear();
             }
 
             if (!ready_tasks.empty()) {
-                SCHEDLOG << ">> resume ready tasks, num: " << ready_tasks.size();
-                for (size_t i = 0; i < ready_tasks.size(); ++i) {
+                const size_t c = ready_tasks.capacity();
+                const size_t s = ready_tasks.size();
+                SCHEDLOG << ">> resume ready tasks, num: " << s;
+                for (size_t i = 0; i < s; ++i) {
                     this->resume(ready_tasks[i]);
+                }
+                if (c >= 8192 && s <= (c >> 1)) {
+                    co::array<Closure*>(s).swap(new_tasks);
                 }
                 ready_tasks.clear();
             }
@@ -205,10 +226,10 @@ void Sched::loop() {
         } while (0);
 
         if (_running) _running = 0;
-        atomic_add(&_cputime, timer.us(), mo_relaxed);
+        if (_sched_num > 1) atomic_add(&_cputime, timer.us(), mo_relaxed);
     }
 
-    _ev.signal();
+    _x.ev.signal();
 }
 
 uint32 TimerManager::check_timeout(co::array<Coroutine*>& res) {
@@ -236,8 +257,7 @@ uint32 TimerManager::check_timeout(co::array<Coroutine*>& res) {
         _timer.erase(_timer.begin(), it);
     }
 
-    if (_timer.empty()) return (uint32)-1;
-    return (int) (_timer.begin()->first - now_ms);
+    return _timer.empty() ? (uint32)-1 : (uint32)(_timer.begin()->first - now_ms);
 }
 
 inline bool& main_thread_as_sched() {
@@ -262,8 +282,10 @@ SchedManager::SchedManager() {
 
     const uint32 ncpu = os::cpunum();
     auto& n = FLG_co_sched_num;
+    auto& m = FLG_co_stack_num;
     auto& s = FLG_co_stack_size;
     if (n == 0 || n > ncpu) n = ncpu;
+    if (m == 0 || (m & (m - 1)) != 0) m = 8;
     if (s == 0) s = 1024 * 1024;
 
     if (n != 1) {
@@ -293,7 +315,7 @@ SchedManager::SchedManager() {
     }
 
     for (uint32 i = 0; i < n; ++i) {
-        Sched* sched = co::_make_static<Sched>(i, n, s);
+        Sched* sched = co::_make_static<Sched>(i, n, m, s);
         if (i != 0 || !main_thread_as_sched()) sched->start();
         _scheds.push_back(sched);
     }
@@ -302,7 +324,7 @@ SchedManager::SchedManager() {
 }
 
 SchedManager::~SchedManager() {
-    this->stop();
+    this->stop(128);
     co::cleanup_sock();
 }
 
@@ -311,9 +333,9 @@ inline SchedManager* sched_man() {
     return s;
 }
 
-void SchedManager::stop() {
+void SchedManager::stop(uint32 ms) {
     for (size_t i = 0; i < _scheds.size(); ++i) {
-        _scheds[i]->stop();
+        _scheds[i]->stop(ms);
     }
     atomic_swap(&is_active(), false, mo_acq_rel);
 }
@@ -340,7 +362,7 @@ int sched_num() {
     return xx::is_active() ? (int)xx::sched_man()->scheds().size() : os::cpunum();
 }
 
-co::Sched* sched() { return (co::Sched*)xx::gSched; }
+co::Sched* sched() { return (co::Sched*) xx::gSched; }
 
 co::Sched* next_sched() {
     return (co::Sched*) xx::sched_man()->next_sched();
@@ -348,17 +370,12 @@ co::Sched* next_sched() {
 
 co::MainSched* main_sched() {
     xx::main_thread_as_sched() = true;
-    return (co::MainSched*)xx::sched_man()->scheds()[0];
+    return (co::MainSched*) xx::sched_man()->scheds()[0];
 }
 
 void* coroutine() {
     const auto s = xx::gSched;
-    if (s) {
-        auto co = s->running();
-        if (co->s != s) co->s = s;
-        return (void*)co;
-    }
-    return NULL;
+    return s ? s->running() : 0;
 }
 
 int sched_id() {
@@ -377,13 +394,13 @@ void add_timer(uint32 ms) {
     s->add_timer(ms);
 }
 
-bool add_io_event(sock_t fd, io_event_t ev) {
+bool add_io_event(sock_t fd, _ev_t ev) {
     const auto s = xx::gSched;
     CHECK(s) << "MUST be called in coroutine..";
     return s->add_io_event(fd, ev);
 }
 
-void del_io_event(sock_t fd, io_event_t ev) {
+void del_io_event(sock_t fd, _ev_t ev) {
     const auto s = xx::gSched;
     CHECK(s) << "MUST be called in coroutine..";
     return s->del_io_event(fd, ev);
@@ -403,7 +420,7 @@ void yield() {
 
 void resume(void* p) {
     const auto co = (xx::Coroutine*)p;
-    co->s->add_ready_task(co);
+    co->sched->add_ready_task(co);
 }
 
 void sleep(uint32 ms) {
@@ -413,6 +430,7 @@ void sleep(uint32 ms) {
 
 bool timeout() {
     const auto s = xx::gSched;
+    CHECK(s) << "MUST be called in coroutine..";
     return s && s->timeout();
 }
 

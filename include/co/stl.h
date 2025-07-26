@@ -1,5 +1,6 @@
 #pragma once
 
+#include "clist.h"
 #include "array.h"
 #include "table.h"
 #include "hash/murmur_hash.h"
@@ -12,6 +13,53 @@
 #include <unordered_set>
 
 namespace co {
+namespace xx {
+
+template<class T>
+struct less {
+    template<class X, class Y>
+    bool operator()(X&& x, Y&& y) const {
+        return static_cast<X&&>(x) < static_cast<Y&&>(y);
+    }
+};
+
+template<>
+struct less<const char*> {
+    bool operator()(const char* x, const char* y) const {
+        return x != y && strcmp(x, y) < 0;
+    }
+};
+
+template<class T>
+struct hash {
+    size_t operator()(const T& x) const noexcept {
+        return std::hash<T>()(x);
+    }
+};
+
+template<>
+struct hash<const char*> {
+    size_t operator()(const char* x) const noexcept {
+        return murmur_hash(x, strlen(x));
+    }
+};
+
+template<class T>
+struct eq {
+    template<class X, class Y>
+    bool operator()(X&& x, Y&& y) const {
+        return static_cast<X&&>(x) == static_cast<Y&&>(y);
+    }
+};
+
+template<>
+struct eq<const char*> {
+    bool operator()(const char* x, const char* y) const {
+        return x == y || strcmp(x, y) == 0;
+    }
+};
+
+} // xx
 
 template<class T, class Alloc = co::stl_allocator<T>>
 using vector = std::vector<T, Alloc>;
@@ -22,83 +70,39 @@ using deque = std::deque<T, Alloc>;
 template<class T, class Alloc = co::stl_allocator<T>>
 using list = std::list<T, Alloc>;
 
-template<class T>
-struct _Less {
-    template<class X, class Y>
-    bool operator()(X&& x, Y&& y) const {
-        return static_cast<X&&>(x) < static_cast<Y&&>(y);
-    }
-};
-
-template<>
-struct _Less<const char*> {
-    bool operator()(const char* x, const char* y) const {
-        return x != y && strcmp(x, y) < 0;
-    }
-};
-
 template<
     class K, class V,
-    class L = _Less<K>,
+    class L = xx::less<K>,
     class Alloc = co::stl_allocator<std::pair<const K, V>>
 > using map = std::map<K, V, L, Alloc>;
 
 template<
     class K, class V,
-    class L = _Less<K>,
+    class L = xx::less<K>,
     class Alloc = co::stl_allocator<std::pair<const K, V>>
 > using multimap = std::multimap<K, V, L, Alloc>;
 
 template<
-    class K, class L = _Less<K>,
+    class K, class L = xx::less<K>,
     class Alloc = co::stl_allocator<K>
 > using set = std::set<K, L, Alloc>;
 
 template<
-    class K, class L = _Less<K>,
+    class K, class L = xx::less<K>,
     class Alloc = co::stl_allocator<K>
 > using multiset = std::multiset<K, L, Alloc>;
 
-template<class T>
-struct _Hash {
-    size_t operator()(const T& x) const noexcept {
-        return std::hash<T>()(x);
-    }
-};
-
-template<>
-struct _Hash<const char*> {
-    size_t operator()(const char* x) const noexcept {
-        return murmur_hash(x, strlen(x));
-    }
-};
-
-template<class T>
-struct _Eq {
-    template<class X, class Y>
-    bool operator()(X&& x, Y&& y) const {
-        return static_cast<X&&>(x) == static_cast<Y&&>(y);
-    }
-};
-
-template<>
-struct _Eq<const char*> {
-    bool operator()(const char* x, const char* y) const {
-        return x == y || strcmp(x, y) == 0;
-    }
-};
-
 template<
     class K, class V,
-    class Hash = _Hash<K>,
-    class Pred = _Eq<K>,
+    class Hash = xx::hash<K>,
+    class Pred = xx::eq<K>,
     class Alloc = co::stl_allocator<std::pair<const K, V>>
 > using hash_map = std::unordered_map<K, V, Hash, Pred, Alloc>;
 
 template<
     class K,
-    class Hash = _Hash<K>,
-    class Pred = _Eq<K>,
+    class Hash = xx::hash<K>,
+    class Pred = xx::eq<K>,
     class Alloc = co::stl_allocator<K>
 > using hash_set = std::unordered_set<K, Hash, Pred, Alloc>;
 
@@ -111,24 +115,14 @@ class lru_map {
 
     lru_map() : _capacity(1024) {}
     ~lru_map() = default;
-    lru_map(const lru_map& x) = default;
-    lru_map& operator=(const lru_map&) = default;
 
     explicit lru_map(size_t capacity) {
         _capacity = capacity > 0 ? capacity : 1024;
     }
 
-    lru_map(lru_map&& x) {
-        _kv.swap(x._kv);
-        _ki.swap(x._ki);
-        _kl.swap(x._kl);
+    lru_map(lru_map&& x)
+        : _kv(std::move(x._kv)), _ki(std::move(x._ki)), _kl(std::move(x._kl)) {
         _capacity = x._capacity;
-    }
-
-    lru_map& operator=(lru_map&& x) {
-        this->clear();
-        this->swap(x);
-        return *this;
     }
 
     size_t size()    const { return _kv.size(); }
@@ -197,6 +191,7 @@ class lru_map {
     co::hash_map<K, typename co::list<K>::iterator> _ki;
     co::list<K> _kl;  // key list
     size_t _capacity; // max capacity
+    DISALLOW_COPY_AND_ASSIGN(lru_map);
 };
 
 } // co

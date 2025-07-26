@@ -24,23 +24,31 @@
 #pragma warning (disable:4722)
 #endif
 
-DEF_string(log_dir, "logs", ">>#0 log dir, will be created if not exists");
-DEF_string(log_file_name, "", ">>#0 name of log file, use exename if empty");
+static fastring* g_log_dir = 0;
+static fastring* g_log_file_name = 0;
+static void _at_mod_init() {
+    DEF_string(log_dir, "logs", ">>#0 log dir, will be created if not exists");
+    DEF_string(log_file_name, "", ">>#0 name of log file, use exename if empty");
+    g_log_dir = &FLG_log_dir;
+    g_log_file_name = &FLG_log_file_name;
+}
 DEF_int32(min_log_level, 0, ">>#0 write logs at or above this level, 0-4 (debug|info|warning|error|fatal)");
 DEF_int32(max_log_size, 4096, ">>#0 max size of a single log");
 DEF_int64(max_log_file_size, 256 << 20, ">>#0 max size of log file, default: 256MB");
 DEF_uint32(max_log_file_num, 8, ">>#0 max number of log files");
 DEF_uint32(max_log_buffer_size, 32 << 20, ">>#0 max size of log buffer, default: 32MB");
-DEF_uint32(demangle_buffer_size, 4096, ">>#0 buffer size for demangle, default: 4KB");
 DEF_uint32(log_flush_ms, 128, ">>#0 flush the log buffer every n ms");
 DEF_bool(cout, false, ">>#0 also logging to terminal");
 DEF_bool(log_daily, false, ">>#0 if true, enable daily log rotation");
 DEF_bool(log_compress, false, ">>#0 if true, compress rotated log files with xz");
 
-// When this value is true, the flag log_dir and log_file_name should have been 
-// initialized, and we are safe to start the logging thread.
-static bool _init_done = false;
-static bool& _unnamed = *[]() { _init_done = true; return &_init_done; }();
+// When this value is true, the above flags should have been initialized, 
+// and we are safe to start the logging thread.
+static bool g_init_done = false;
+static bool g_dummy = []() {
+    atomic_store(&g_init_done, true, mo_release);
+    return *co::_make_static<bool>(false);
+}();
 
 namespace _xx {
 namespace log {
@@ -58,6 +66,7 @@ struct Mod {
     fastring* stream;
     LogTime* log_time;
     LogFile* log_file;
+    LogFile* log_fatal;
     Logger* logger;
     ExceptHandler* except_handler;
     bool check_failed;
@@ -180,6 +189,7 @@ class LogFile {
     fs::file& open(const char* topic, int level);
     void write(const char* p, size_t n);
     void write(const char* topic, const char* p, size_t n);
+    void close() { _file.close(); }
 
   private:
     bool check_config(const char* topic, int level);
@@ -198,11 +208,11 @@ bool LogFile::check_config(const char* topic, int level) {
     auto& s = *m.stream;
 
     // log dir, backslash to slash
-    auto& d = FLG_log_dir;
+    auto& d = *g_log_dir; // FLG_log_dir;
     for (size_t i = 0; i < d.size(); ++i) if (d[i] == '\\') d[i] = '/';
 
     // log file name, use process name by default
-    auto& f = FLG_log_file_name;
+    auto& f = *g_log_file_name; // FLG_log_file_name;
     s.clear();
     if (f.empty()) {
         s.append(*m.exename);
@@ -259,7 +269,7 @@ fs::file& LogFile::open(const char* topic, int level) {
 
     auto& m = mod();
     auto& s = *m.stream; s.clear();
-    auto& d = FLG_log_dir;
+    auto& d = *g_log_dir; // FLG_log_dir;
 
     // create log dir if not exists
     if (!topic) {
@@ -350,7 +360,6 @@ void LogFile::write(const char* topic, const char* p, size_t n) {
         const uint32 day = m.log_time->day();
         if (_day != day) { _day = day; _file.close(); }
     }
-
     if (_file || this->open(topic, 0)) {
         _file.write(p, n);
         const uint64 size = _file.size(); // -1 if not exists
@@ -613,7 +622,7 @@ void Logger::write_topic_logs(LogFile& f, const char* topic, const char* p, size
 void Logger::thread_fun() {
     bool signaled;
     int64 sec;
-    while (!_init_done) _log_event.wait(8);
+    while (atomic_load(&g_init_done, mo_acquire) != true) _log_event.wait(8);
     while (!_stop) {
         signaled = _log_event.wait(FLG_log_flush_ms);
         if (_stop) break;
@@ -693,18 +702,19 @@ void Logger::thread_fun() {
 #ifdef _WIN32
 class StackTrace : public StackWalker {
   public:
+    typedef void (*write_cb_t)(const char*, size_t);
     static const int kOptions =
         StackWalker::SymUseSymSrv |
         StackWalker::RetrieveSymbol |
         StackWalker::RetrieveLine |
         StackWalker::RetrieveModuleInfo;
 
-    StackTrace(uint32=0) : StackWalker(kOptions), _f(0), _skip(0) {}
+    StackTrace() : StackWalker(kOptions), _f(0), _skip(0) {}
 
     virtual ~StackTrace() = default;
 
     void dump_stack(void* f, int skip) {
-        _f = (fs::file*) f;
+        _f = (write_cb_t) f;
         _skip = skip;
         this->ShowCallstack(GetCurrentThread());
     }
@@ -713,7 +723,7 @@ class StackTrace : public StackWalker {
     virtual void OnOutput(LPCSTR s) {
         if (_skip > 0) { --_skip; return; }
         const size_t n = strlen(s);
-        if (_f && *_f) _f->write(s, n);
+        if (_f) _f(s, n);
         auto r = ::fwrite(s, 1, n, stderr); (void)r;
     }
 
@@ -722,7 +732,7 @@ class StackTrace : public StackWalker {
     virtual void OnDbgHelpErr(LPCSTR, DWORD, DWORD64) {}
 
   private:
-    fs::file* _f; // file
+    write_cb_t _f;
     int _skip;
 };
 
@@ -730,9 +740,10 @@ class StackTrace : public StackWalker {
 
 class StackTrace{
   public:
-    StackTrace(uint32 n)
-        : _f(0), _buf((char*)::malloc(n)), _size(n), _s(4096), _exe(os::exepath()) {
-        memset(_buf, 0, n);
+    typedef void (*write_cb_t)(const char*, size_t);
+    StackTrace()
+        : _f(0), _buf((char*)::malloc(4096)), _size(4096), _s(4096), _exe(os::exepath()) {
+        memset(_buf, 0, 4096);
         memset((char*)_s.data(), 0, _s.capacity());
         (void) _exe.c_str();
     }
@@ -746,9 +757,9 @@ class StackTrace{
     int backtrace(const char* file, int line, const char* func, int& count);
 
   private:
-    fs::file* _f;
+    write_cb_t _f;
     char* _buf;    // for demangle
-    uint32 _size;  // buf size
+    size_t _size;  // buf size
     fastream _s;   // for stack trace
     fastring _exe; // exe path
 };
@@ -757,11 +768,11 @@ class StackTrace{
 // https://gcc.gnu.org/onlinedocs/libstdc++/libstdc++-html-USERS-4.3/a01696.html
 char* StackTrace::demangle(const char* name) {
     int status = 0;
-    size_t n = _buf ? _size : 0;
+    size_t n = _size;
     char* p = abi::__cxa_demangle(name, _buf, &n, &status);
-    if (p && p != _buf) {
-        log2stderr("abi::__cxa_demangle: buffer reallocated..");
-        _buf = NULL;
+    if (_size < n) { /* buffer reallocated */
+        _buf = p;
+        _size = n;
     }
     return p;
 }
@@ -782,7 +793,7 @@ int backtrace_cb(void* data, uintptr_t /*pc*/, const char* file, int line, const
 }
 
 void StackTrace::dump_stack(void* f, int skip) {
-    _f = (fs::file*) f;
+    _f = (write_cb_t) f;
     struct user_data_t ud = { this, 0 };
     struct backtrace_state* state = backtrace_create_state(_exe.c_str(), 1, error_cb, NULL);
     backtrace_full(state, skip, backtrace_cb, error_cb, (void*)&ud);
@@ -790,9 +801,8 @@ void StackTrace::dump_stack(void* f, int skip) {
 
 int StackTrace::backtrace(const char* file, int line, const char* func, int& count) {
     if (!file && !func) return 0;
-    char* p = NULL;
     if (func) {
-        p = this->demangle(func);
+        char* p = this->demangle(func);
         if (p) func = p;
     }
 
@@ -800,10 +810,8 @@ int StackTrace::backtrace(const char* file, int line, const char* func, int& cou
     _s << '#' << (count++) << "  in " << (func ? func : "???") << " at " 
        << (file ? file : "???") << ':' << line << '\n';
 
-    if (_f && *_f) _f->write(_s.data(), _s.size());
+    if (_f) _f(_s.data(), _s.size());
     log2stderr(_s.data(), _s.size());
-
-    if (p && p != _buf) ::free(p);
     return 0;
 }
 
@@ -822,6 +830,11 @@ class ExceptHandler {
     void handle_signal(int sig);
     int handle_exception(void* e); // for windows only
 
+    static void write_fatal_message(const char* p, size_t n) {
+        mod().log_file->write(p, n);
+        mod().log_fatal->write(p, n);
+    }
+
   private:
     StackTrace* _stack_trace;
     co::map<int, os::sig_handler_t> _old_handlers;
@@ -838,7 +851,7 @@ LONG WINAPI on_except(PEXCEPTION_POINTERS p) {
 #endif
 
 ExceptHandler::ExceptHandler() {
-    _stack_trace = co::_make_static<StackTrace>(FLG_demangle_buffer_size);
+    _stack_trace = co::_make_static<StackTrace>();
     _old_handlers[SIGINT] = os::signal(SIGINT, on_signal);
     _old_handlers[SIGTERM] = os::signal(SIGTERM, on_signal);
   #ifdef _WIN32
@@ -885,7 +898,9 @@ void ExceptHandler::handle_signal(int sig) {
     }
 
     m.logger->stop(true);
-    auto& f = m.log_file->open(NULL, fatal);
+    m.log_file->open(NULL, 0);
+    m.log_fatal->open(NULL, fatal);
+    auto f = &ExceptHandler::write_fatal_message;
     auto& s = *m.stream; s.clear();
     if (!m.check_failed) {
         s << 'F' << m.log_time->get() << "] ";
@@ -915,14 +930,13 @@ void ExceptHandler::handle_signal(int sig) {
     }
 
     if (!s.empty()) {
-        if (f) f.write(s);
+        f(s.data(), s.size());
         log2stderr(s.data(), s.size());
     }
 
     if (_stack_trace) _stack_trace->dump_stack(
-        &f, m.check_failed ? 7 : (sig == SIGABRT ? 4 : 3)
+        (void*)f, m.check_failed ? 7 : (sig == SIGABRT ? 4 : 3)
     );
-    if (f) { f.write('\n'); f.close(); }
 
     os::signal(sig, _old_handlers[sig]);
     raise(sig);
@@ -1001,16 +1015,16 @@ int ExceptHandler::handle_exception(void* e) {
     }
 
     m.logger->stop();
-    auto& f = m.log_file->open(NULL, fatal);
+    m.log_file->open(NULL, 0);
+    m.log_fatal->open(NULL, fatal);
+    auto f = &ExceptHandler::write_fatal_message;
     auto& s = *m.stream; s.clear();
     s << 'F' << m.log_time->get() << "] " << err;
     if (err[0] == 'U') s << (void*)(size_t)p->ExceptionRecord->ExceptionCode;
     s << '\n';
-    if (f) f.write(s);
+    f(s.data(), s.size());
     log2stderr(s.data(), s.size());
-
-    if (_stack_trace) _stack_trace->dump_stack(&f, 6);
-    if (f) { f.write('\n'); f.close(); }
+    if (_stack_trace) _stack_trace->dump_stack((void*)f, 6);
 
     ::exit(0);
     return EXCEPTION_EXECUTE_HANDLER;
@@ -1021,10 +1035,12 @@ int ExceptHandler::handle_exception(void*) { return 0; }
 #endif // _WIN32
 
 Mod::Mod() {
+    _at_mod_init();
     exename = co::_make_static<fastring>(os::exename());
     stream = co::_make_static<fastring>(4096);
     log_time = co::_make_static<LogTime>();
     log_file = co::_make_static<LogFile>();
+    log_fatal = co::_make_static<LogFile>();
     logger = co::_make_static<Logger>(log_time, log_file);
     except_handler = co::_make_static<ExceptHandler>();
     check_failed = false;

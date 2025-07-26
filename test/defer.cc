@@ -7,7 +7,7 @@ void f(int sn, int x, int y) {
 }
 
 void f() {
-    Timer t;
+    co::Timer t;
     defer(
         co::print("time elapse: ", t.us(), "us")
     );
@@ -17,7 +17,10 @@ void f() {
 int main(int argc, char** argv) {
     defer(co::print("hello world"));
     defer(co::print("hello again"));
-    defer(f(1, 1, 1); f(2, 1, 3));
+    defer(
+        f(1, 1, 1);
+        f(2, 1, 3);
+    );
     f();
     f();
     return 0;

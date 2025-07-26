@@ -39,28 +39,15 @@ DEF_test(lru_map) {
     EXPECT_EQ(m.size(), 2);
     EXPECT(m.find(1) == m.end());
 
-    auto a = m;
-    EXPECT_EQ(m.size(), 2);
+    auto a = std::move(m);
+    EXPECT_EQ(m.size(), 0);
     EXPECT_EQ(a.size(), 2);
 
-    auto b = std::move(a);
+    EXPECT_EQ(a.find(4)->second, 4);
+    EXPECT_EQ(a.find(3)->second, 3);
+
+    a.clear();
     EXPECT_EQ(a.size(), 0);
-    EXPECT_EQ(b.size(), 2);
-
-    co::lru_map<int, int> c;
-    c = b;
-    EXPECT_EQ(b.size(), 2);
-    EXPECT_EQ(c.size(), 2);
-
-    EXPECT_EQ(c.find(4)->second, 4);
-    EXPECT_EQ(c.begin()->second, 4);
-
-    c.clear();
-    EXPECT_EQ(c.size(), 0);
-
-    c = std::move(b);
-    EXPECT_EQ(b.size(), 0);
-    EXPECT_EQ(c.size(), 2);
 }
 
 DEF_test(array){
@@ -309,17 +296,26 @@ DEF_test(array){
         co::array<A> c(std::move(b));
         EXPECT_EQ(gc, 24);
 
-        c.remove_back();
+        c.remove_back(); // gd + 1
         EXPECT_EQ(gd, 9);
 
-        c.remove(3);
+        c.remove(3); // gd + 2
         EXPECT_EQ(gc, 25);
         EXPECT_EQ(gd, 11);
+
+        c.pop_back(); // gc + 1, gd + 2
+        EXPECT_EQ(gc, 26);
+        EXPECT_EQ(gd, 13);
+        {
+            A x = c.pop_back(); // gc + 1, gd + 2
+        }
+        EXPECT_EQ(gc, 27);
+        EXPECT_EQ(gd, 15);
 
         a.reset();
         b.reset();
         c.reset();
-        EXPECT_EQ(gd, 25);
+        EXPECT_EQ(gd, 27);
         EXPECT_EQ(gc, gd);
     }
 }

@@ -156,73 +156,75 @@ class MemBlocks {
 
 void* MemBlocks::alloc(uint32 n, uint32 align) {
     if (unlikely(_m == 0)) {
-        _u = (uint32*)::malloc(sizeof(char*) * 8 + 8) + 2;
+        _u = (uint32*)::malloc(sizeof(char*) * 7 + 8) + 2;
         _m[0] = (char*)::malloc(_blk_size);
-        _u[-1] = 8; // cap
+        _u[-1] = 7; // cap
         _u[-2] = 1; // size
     }
 
+    char* x = _m[_u[-2] - 1];
+    char* p = align != sizeof(void*) ? god::align_up(x + _p, align) : x + _p;
     n = god::align_up(n, align);
-    if (unlikely(_p + n > _blk_size)) {
+    if (unlikely(p + n > x + _blk_size)) {
         if (_u[-2] == _u[-1]) {
             _u = (uint32*)::realloc(_u - 2, sizeof(char*) * _u[-1] * 2 + 8) + 2;
             _u[-1] *= 2;
         }
-        _m[_u[-2]] = (char*)::malloc(_blk_size);
-        _u[-2] += 1;
+        x = (char*)::malloc(_blk_size);
+        _m[_u[-2]++] = x;
         _p = 0;
+        p = align != sizeof(void*) ? god::align_up(x, align) : x;
     }
 
-    char* r;
-    char* x = _m[_u[-2] - 1];
-    if (align != sizeof(void*)) {
-        r = god::align_up(x + _p, align);
-    } else {
-        r = x + _p;
-    }
-    _p = god::cast<uint32>(r - x) + n;
-    return r;
+    _p = god::cast<uint32>(p - x) + n;
+    return p;
 }
-
-typedef std::function<void()> F;
 
 class StaticAlloc {
   public:
-    static const uint32 N = sizeof(F);
-
-    StaticAlloc(uint32 m=32*1024, uint32 d=8*1024)
-        : _m(m), _d(d) {
-    }
-    ~StaticAlloc();
+    StaticAlloc(uint32 m) : _m(m) {}
+    ~StaticAlloc() = default;
 
     void* alloc(size_t n) {
-        return _m.alloc((uint32)n, n <= 32 ? sizeof(size_t) : 64);
-    }
-
-    void dealloc(F&& f) {
-        char* p = (char*) _d.alloc(N);
-        new(p) F(std::forward<F>(f));
+        const size_t H = co::cache_line_size >> 1;
+        return _m.alloc((uint32)n, n <= H ? sizeof(void*) : co::cache_line_size);
     }
 
   private:
     MemBlocks _m;
-    MemBlocks _d;
 };
 
-StaticAlloc::~StaticAlloc() {
-    const uint32 M = _d.blk_size() / N;
-    for (uint32 i = _d.size(); i > 0; --i) {
-        const uint32 m = i != _d.size() ? M : _d.pos() / N;
-        for (uint32 x = m; x > 0; --x) {
-            F* f = god::cast<F*>(_d[i - 1] + (x - 1) * N);
-            (*f)();
+typedef std::function<void()> F;
+
+class Dealloc {
+  public:
+    static const uint32 N = sizeof(F);
+    Dealloc() : _m(8192) {}
+
+    ~Dealloc() {
+        const uint32 M = _m.blk_size() / N;
+        for (uint32 i = _m.size(); i > 0; --i) {
+            const uint32 m = i != _m.size() ? M : _m.pos() / N;
+            for (uint32 x = m; x > 0; --x) {
+                F* f = god::cast<F*>(_m[i - 1] + (x - 1) * N);
+                (*f)();
+                f->~F();
+            }
         }
     }
-}
+
+    void add_destructor(F&& f) {
+        const auto p = _m.alloc(N);
+        new(p) F(std::forward<F>(f));
+    }
+    
+  private:
+    MemBlocks _m;
+};
 
 class Root {
   public:
-    Root() : _mtx(), _a(4096, 4096) {}
+    Root() : _mtx(), _sa(8192) {}
     ~Root() = default;
 
     template<typename T, typename... Args>
@@ -230,15 +232,22 @@ class Root {
         void* p;
         {
             std::lock_guard<std::mutex> g(_mtx);
-            p = _a.alloc(sizeof(T));
-            if (p) _a.dealloc([p](){ ((T*)p)->~T(); });
+            p = _sa.alloc(sizeof(T));
+            if (p) _da.add_destructor([p](){ ((T*)p)->~T(); });
         }
         return p ? new(p) T(std::forward<Args>(args)...) : 0;
     }
 
+    void add_destructor(F&& f, int i) {
+        std::lock_guard<std::mutex> g(_mtx);
+        _dx[i].add_destructor(std::forward<F>(f));
+    }
+
   private:
     std::mutex _mtx;
-    StaticAlloc _a;
+    StaticAlloc _sa; // alloc memory for GlobalAlloc and ThreadAlloc
+    Dealloc _da;     // used to destruct GlobalAlloc and ThreadAlloc
+    Dealloc _dx[4];  // 0: _rootic, 1: _static, 2: rootic, 3: static 
 };
 
 Root& root() { static Root r; return r; }
@@ -377,20 +386,21 @@ class LargeAlloc : public co::clink {
   public:
     static const uint32 BS_BITS = 1u << (g_lb_bits - 12);
     static const uint32 LA_SIZE = 64;
-    static const uint32 MAX_bIT = BS_BITS - 1;
+    static const uint32 MAX_BIT = BS_BITS - 1;
 
     explicit LargeAlloc(HugeBlock* parent, ThreadAlloc* ta)
         : _parent(parent), _ta(ta) {
         static_assert(sizeof(*this) <= LA_SIZE, "");
+        static_assert((BS_BITS >> 3) <= LA_SIZE, "");
         _p = (char*)this + 4096;
         _pbs = (char*)this + LA_SIZE;
-        _xpbs = (char*)this + (LA_SIZE + (BS_BITS >> 3));
+        _xpbs = (char*)this + (LA_SIZE + LA_SIZE);
         //assert(!next && !prev && _bit == 0);
     }
 
     // alloc n units
     void* alloc(uint32 n) {
-        if (_bit + n <= MAX_bIT) {
+        if (_bit + n <= MAX_BIT) {
             _bs.set(_bit);
             return _p + (god::fetch_add(&_bit, n) << 12);
         }
@@ -414,7 +424,7 @@ class LargeAlloc : public co::clink {
 
     void* realloc(void* p, uint32 o, uint32 n) {
         uint32 i = (uint32)(((char*)p - _p) >> 12);
-        if (_bit == i + o && i + n <= MAX_bIT) {
+        if (_bit == i + o && i + n <= MAX_BIT) {
             _bit = i + n;
             return p;
         }
@@ -463,7 +473,7 @@ void* LargeAlloc::try_hard_alloc(uint32 n) {
         }
     }
 
-    if (_bit + n <= MAX_bIT) {
+    if (_bit + n <= MAX_BIT) {
         _bs.set(_bit);
         return _p + (god::fetch_add(&_bit, n) << 12);
     }
@@ -474,12 +484,14 @@ void* LargeAlloc::try_hard_alloc(uint32 n) {
 class SmallAlloc : public co::clink {
   public:
     static const uint32 BS_BITS = 1u << (g_sb_bits - 4); // 2048
-    static const uint32 SA_SIZE = 64;
-    static const uint32 MAX_bIT = BS_BITS - ((SA_SIZE + (BS_BITS >> 2)) >> 4);
+    static const uint32 SA_SIZE = co::cache_line_size < 64 ? 64 : co::cache_line_size;
+    static const uint32 MAX_BIT = BS_BITS - ((SA_SIZE + (BS_BITS >> 2)) >> 4);
 
     explicit SmallAlloc(LargeBlock* parent, ThreadAlloc* ta)
         : _bit(0), _parent(parent), _ta(ta) {
         static_assert(sizeof(*this) <= SA_SIZE, "");
+        static_assert((SA_SIZE & (SA_SIZE - 1)) == 0, "");
+        static_assert(co::cache_line_size <= (BS_BITS >> 3), "");
         _p = (char*)this + (SA_SIZE + (BS_BITS >> 2));
         _pbs = (char*)this + SA_SIZE;
         _xpbs = (char*)this + (SA_SIZE + (BS_BITS >> 3));
@@ -488,11 +500,26 @@ class SmallAlloc : public co::clink {
 
     // alloc n units
     void* alloc(uint32 n) {
-        if (_bit + n <= MAX_bIT) {
+        if (_bit + n <= MAX_BIT) {
             _bs.set(_bit);
             return _p + (god::fetch_add(&_bit, n) << 4);
         }
         return NULL;
+    }
+
+    void* alloc(uint32 n, uint32 a) {
+        void* p = NULL;
+        const uint32 bit = (a <= (co::cache_line_size >> 4) || a <= (SA_SIZE >> 4))
+            ? god::align_up(_bit, a)
+            : god::align_up(_bit, a) + (god::cast<uint32>(god::align_up(_p, a << 4) - _p) >> 4);
+
+        n = god::align_up(n, a);
+        if (bit + n <= MAX_BIT) {
+            _bs.set(bit);
+            p = _p + (bit << 4);
+            _bit = bit + n;
+        }
+        return p;
     }
 
     void* try_hard_alloc(uint32 n);
@@ -512,7 +539,7 @@ class SmallAlloc : public co::clink {
 
     void* realloc(void* p, uint32 o, uint32 n) {
         uint32 i = (uint32)(((char*)p - _p) >> 4);
-        if (_bit == i + o && i + n <= MAX_bIT) {
+        if (_bit == i + o && i + n <= MAX_BIT) {
             _bit = i + n;
             return p;
         }
@@ -561,7 +588,7 @@ void* SmallAlloc::try_hard_alloc(uint32 n) {
         }
     }
 
-    if (_bit + n <= MAX_bIT) {
+    if (_bit + n <= MAX_BIT) {
         _bs.set(_bit);
         return _p + (god::fetch_add(&_bit, n) << 4);
     }
@@ -574,8 +601,8 @@ class GlobalAlloc {
     GlobalAlloc() = default;
     ~GlobalAlloc();
 
-    struct _X {
-        _X() : mtx(), hb(0) {}
+    struct alignas(64) X {
+        X() : mtx(), hb(0) {}
         std::mutex mtx;
         union {
             HugeBlock* hb;
@@ -589,7 +616,7 @@ class GlobalAlloc {
     void free(void* p, HugeBlock* hb, uint32 alloc_id);
 
   private:
-    _X _x[g_array_size];
+    X _x[g_array_size];
 };
 
 GlobalAlloc::~GlobalAlloc() {
@@ -604,10 +631,10 @@ GlobalAlloc::~GlobalAlloc() {
     }
 }
 
-class ThreadAlloc {
+class alignas(co::cache_line_size) ThreadAlloc {
   public:
     ThreadAlloc(GlobalAlloc* ga)
-        : _lb(0), _la(0), _sa(0), _ga(ga), _sai(), _sau() {
+        : _lb(0), _la(0), _sa(0), _ga(ga), _s(16 * 1024) {
         static uint32 g_alloc_id = (uint32)-1;
         _id = atomic_inc(&g_alloc_id, mo_relaxed);
     }
@@ -615,9 +642,10 @@ class ThreadAlloc {
 
     uint32 id() const { return _id; }
     void* alloc(size_t n);
+    void* alloc(size_t n, size_t align);
     void free(void* p, size_t n);
     void* realloc(void* p, size_t o, size_t n);
-    StaticAlloc& static_alloc(int i) { return i ? _sai : _sau; }
+    void* salloc(size_t n) { return _s.alloc(n); }
 
   private:
     union { LargeBlock* _lb; co::clist _llb; };
@@ -625,8 +653,7 @@ class ThreadAlloc {
     union { SmallAlloc* _sa; co::clist _lsa; };
     uint32 _id;
     GlobalAlloc* _ga;
-    StaticAlloc _sai;
-    StaticAlloc _sau;
+    StaticAlloc _s; 
 };
 
 
@@ -788,6 +815,52 @@ inline void* ThreadAlloc::alloc(size_t n) {
     return p;
 }
 
+inline void* ThreadAlloc::alloc(size_t n, size_t align) {
+    if (align < 32) align = 32;
+    assert(align <= 1024 && !(align & (align - 1)));
+
+    void* p = 0;
+    SmallAlloc* sa;
+    if (n <= 2048) {
+        const uint32 a = (uint32)align >> 4;
+        const uint32 u = n > 16 ? god::nb<16>((uint32)n) : 1;
+        if (_sa && (p = _sa->alloc(u, a))) goto end;
+
+        if (_lb && (sa = make_small_alloc(_lb, this))) {
+            _lsa.push_front(sa);
+            p = sa->alloc(u, a);
+            goto end;
+        }
+
+        if (_lb && _lb->next) {
+            _try_alloc(_llb, 4, k) {
+                if ((sa = make_small_alloc((LargeBlock*)k, this))) {
+                    _llb.move_front(k);
+                    _lsa.push_front(sa);
+                    p = sa->alloc(u, a);
+                    goto end;
+                }
+            }
+        }
+
+        {
+            auto lb = _ga->make_large_block(_id);
+            if (lb) {
+                _llb.push_front(lb);
+                sa = make_small_alloc(lb, this);
+                _lsa.push_front(sa);
+                p = sa->alloc(u, a);
+            }
+            goto end;
+        }
+    } else {
+        p = this->alloc(n);
+    }
+
+  end:
+    return p;
+}
+
 inline void ThreadAlloc::free(void* p, size_t n) {
     if (p) {
         if (n <= 2048) {
@@ -859,18 +932,22 @@ inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
 
 } // xx
 
-void* _salloc(size_t n, int x) {
+void* _salloc(size_t n) {
     assert(n <= 4096);
-    return xx::talloc()->static_alloc(x).alloc(n);
+    return xx::talloc()->salloc(n);
 }
 
 void _dealloc(std::function<void()>&& f, int x) {
-    xx::talloc()->static_alloc(x).dealloc(std::forward<xx::F>(f));
+    xx::root().add_destructor(std::forward<xx::F>(f), x);
 }
 
 #ifndef CO_USE_SYS_MALLOC
 void* alloc(size_t n) {
     return xx::talloc()->alloc(n);
+}
+
+void* alloc(size_t n, size_t align) {
+    return xx::talloc()->alloc(n, align);
 }
 
 void free(void* p, size_t n) {
@@ -883,14 +960,18 @@ void* realloc(void* p, size_t o, size_t n) {
 
 #else
 void* alloc(size_t n) { return ::malloc(n); }
+void* alloc(size_t n, size_t) { return ::malloc(n); }
 void free(void* p, size_t) { ::free(p); }
 void* realloc(void* p, size_t, size_t n) { return ::realloc(p, n); }
 #endif
 
 void* zalloc(size_t size) {
-    auto p = co::alloc(size);
-    if (p) memset(p, 0, size);
-    return p;
+    if (size <= xx::g_max_alloc_size) {
+        auto p = co::alloc(size);
+        if (p) memset(p, 0, size);
+        return p;
+    }
+    return ::calloc(1, size);
 }
 
 } // co
