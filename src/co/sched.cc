@@ -131,8 +131,8 @@ void Sched::resume(Coroutine* co) {
 
 void Sched::loop() {
     gSched = this;
-    co::array<Closure*> new_tasks(512);
-    co::array<Coroutine*> ready_tasks(512);
+    co::vector<Closure*> new_tasks(512);
+    co::vector<Coroutine*> ready_tasks(512);
     co::Timer timer;
 
     while (!_x.stopped) {
@@ -191,7 +191,7 @@ void Sched::loop() {
                     this->resume(this->new_coroutine(new_tasks[i]));
                 }
                 if (c >= 8192 && s <= (c >> 1)) {
-                    co::array<Closure*>(s).swap(new_tasks);
+                    co::vector<Closure*>(s).swap(new_tasks);
                 }
                 new_tasks.clear();
             }
@@ -204,7 +204,7 @@ void Sched::loop() {
                     this->resume(ready_tasks[i]);
                 }
                 if (c >= 8192 && s <= (c >> 1)) {
-                    co::array<Closure*>(s).swap(new_tasks);
+                    co::vector<Coroutine*>(s).swap(ready_tasks);
                 }
                 ready_tasks.clear();
             }
@@ -232,7 +232,7 @@ void Sched::loop() {
     _x.ev.signal();
 }
 
-uint32 TimerManager::check_timeout(co::array<Coroutine*>& res) {
+uint32 TimerManager::check_timeout(co::vector<Coroutine*>& res) {
     if (_timer.empty()) return (uint32)-1;
 
     int64 now_ms = now::ms();
@@ -267,7 +267,7 @@ inline bool& main_thread_as_sched() {
 
 struct SchedInfo {
     SchedInfo() : cputime(co::sched_num(), 0), seed(co::rand()) {}
-    co::array<int64> cputime;
+    co::vector<int64> cputime;
     uint32 seed;
 };
 
@@ -275,6 +275,8 @@ inline SchedInfo& sched_info() {
     static __thread SchedInfo* s = 0;
     return s ? *s : *(s = co::_make_static<SchedInfo>());
 }
+
+static uint32 g_nco = 0;
 
 SchedManager::SchedManager() {
     co::init_sock();
@@ -291,6 +293,10 @@ SchedManager::SchedManager() {
     if (n != 1) {
         if ((n & (n - 1)) == 0) {
             _next = [](const co::vector<Sched*>& v) {
+                if (g_nco < v.size()) {
+                    const uint32 i = atomic_fetch_inc(&g_nco);
+                    if (i < v.size()) return v[i];
+                }
                 auto& si = sched_info();
                 const uint32 x = god::cast<uint32>(v.size() - 1);
                 const uint32 i = co::rand(si.seed) & x;
@@ -301,6 +307,10 @@ SchedManager::SchedManager() {
             };
         } else {
             _next = [](const co::vector<Sched*>& v) {
+                if (g_nco < v.size()) {
+                    const uint32 i = atomic_fetch_inc(&g_nco);
+                    if (i < v.size()) return v[i];
+                }
                 auto& si = sched_info();
                 const uint32 x = god::cast<uint32>(v.size());
                 const uint32 i = co::rand(si.seed) % x;

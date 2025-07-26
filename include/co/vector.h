@@ -9,74 +9,74 @@
 namespace co {
 
 template<typename T, typename Alloc=co::default_allocator>
-class array {
+class vector {
   public:
-    constexpr array() noexcept
+    constexpr vector() noexcept
         : _cap(0), _size(0), _p(0) {
     }
 
-    // create an empty array with capacity: @cap
-    explicit array(size_t cap)
+    // create an empty vector with capacity: @cap
+    explicit vector(size_t cap)
         : _cap(cap), _size(0), _p((T*) Alloc::alloc(sizeof(T) * cap)) {
     }
 
-    // create an array of n elements with value @x
+    // create an vector of n elements with value @x
     //   - cond: X is not int or T is int.
     //   - e.g. 
-    //     co::array<int> a(4, 3);     -> [3,3,3,3]
-    //     co::array<char> x(2, 'x');  -> ['x','x']
+    //     co::vector<int> a(4, 3);     -> [3,3,3,3]
+    //     co::vector<char> x(2, 'x');  -> ['x','x']
     template<typename X, god::if_t<
         !god::is_same<god::rm_cvref_t<X>, int>() ||
         god::is_same<god::rm_cv_t<T>, int>(), int
     > = 0>
-    array(size_t n, X&& x)
+    vector(size_t n, X&& x)
         : _cap(n), _size(n), _p((T*) Alloc::alloc(sizeof(T) * n)) {
         for (size_t i = 0; i < n; ++i) new (_p + i) T(x);
     }
 
-    // create an array of n elements with default value
+    // create an vector of n elements with default value
     //   - cond: X is int and T is not int.
     //   - e.g. 
-    //     co::array<fastring> a(4, 0);
+    //     co::vector<fastring> a(4, 0);
     template<typename X, god::if_t<
         god::is_same<god::rm_cvref_t<X>, int>() &&
         !god::is_same<god::rm_cv_t<T>, int>(), int
     > = 0>
-    array(size_t n, X&&)
+    vector(size_t n, X&&)
         : _cap(n), _size(n), _p((T*) Alloc::alloc(sizeof(T) * n)) {
         for (size_t i = 0; i < n; ++i) new (_p + i) T();
     }
 
-    array(const array& x)
+    vector(const vector& x)
         : _cap(x.size()), _size(_cap) {
         _p = (T*) Alloc::alloc(sizeof(T) * _cap);
         this->_copy_n(_p, x._p, _cap);
     }
 
-    array(array&& x) noexcept
+    vector(vector&& x) noexcept
         : _cap(x._cap), _size(x._size), _p(x._p) {
         x._p = 0;
         x._cap = x._size = 0;
     }
 
-    // create array from an initializer list
-    array(std::initializer_list<T> x)
+    // create vector from an initializer list
+    vector(std::initializer_list<T> x)
         : _cap(x.size()), _size(0), _p((T*) Alloc::alloc(sizeof(T) * _cap)) {
         for (const auto& e : x) new (_p + _size++) T(e);
     }
 
     template<typename It, god::if_t<god::is_class<It>(), int> = 0>
-    array(It beg, It end) : array(8) {
+    vector(It beg, It end) : vector(8) {
         this->append(beg, end);
     }
 
-    // create array from an array
-    array(T* p, size_t n) : array(n) {
+    // create vector from an vector
+    vector(T* p, size_t n)
+        : _cap(n), _size(n), _p((T*) Alloc::alloc(sizeof(T) * n)) {
         this->_copy_n(_p, p, n);
-        _size += n;
     }
 
-    ~array() { this->reset(); }
+    ~vector() { this->reset(); }
 
     size_t capacity() const noexcept { return _cap; }
     size_t size() const noexcept { return _size; }
@@ -92,25 +92,25 @@ class array {
     T& operator[](size_t n) { return _p[n]; }
     const T& operator[](size_t n) const { return _p[n]; }
 
-    array& operator=(const array& x) {
+    vector& operator=(const vector& x) {
         if (&x != this) {
             this->reset();
-            new (this) array(x);
+            new (this) vector(x);
         }
         return *this;
     }
 
-    array& operator=(array&& x) {
+    vector& operator=(vector&& x) {
         if (&x != this) {
             this->reset();
-            new (this) array(std::move(x));
+            new (this) vector(std::move(x));
         }
         return *this;
     }
 
-    array& operator=(std::initializer_list<T> x) {
+    vector& operator=(std::initializer_list<T> x) {
         this->reset();
-        new (this) array(x);
+        new (this) vector(x);
         return *this;
     }
 
@@ -173,16 +173,23 @@ class array {
         for (auto it = beg; it != end; ++it) this->append(*it);
     }
 
-    // append n elements, it is not safe if p overlaps with the internal buffer 
-    // of the array, use safe_append() in that case.
+    // append n elements
     void append(const T* p, size_t n) {
-        this->reserve(_size + n);
-        this->_copy_n(_p + _size, p, n);
-        _size += n;
+        if (p < _p || p >= _p + _size) {
+            this->reserve(_size + n);
+            this->_copy_n(_p + _size, p, n);
+            _size += n;
+        } else {
+            assert(p + n <= _p + _size);
+            const size_t x = p - _p;
+            this->reserve(_size + n);
+            this->_copy_n(_p + _size, _p + x, n);
+            _size += n;
+        }
     }
 
-    // append an array, &x == this is ok.
-    void append(const array& x) {
+    // append an vector, &x == this is ok.
+    void append(const vector& x) {
         if (&x != this) {
             this->append(x.data(), x.size());
         } else {
@@ -192,8 +199,8 @@ class array {
         }
     }
 
-    // append an array, elements in @x will be moved to the end of this array
-    void append(array&& x) {
+    // append an vector, elements in @x will be moved to the end of this vector
+    void append(vector&& x) {
         if (&x != this) {
             this->reserve(_size + x.size());
             this->_move_n(_p + _size, x._p, x._size);
@@ -205,24 +212,11 @@ class array {
         }
     }
 
-    // it is ok if p overlaps with the internal buffer of the array
-    void safe_append(const T* p, size_t n) {
-        if (p < _p || p >= _p + _size) {
-            this->append(p, n);
-        } else {
-            assert(p + n <= _p + _size);
-            const size_t x = p - _p;
-            this->reserve(_size + n);
-            this->_copy_n(_p + _size, _p + x, n);
-            _size += n;
-        }
-    }
-
     // insert a new element (construct with args x...) at the back
     //   - e.g. 
-    //     co::array<fastring> x; x.emplace(4, 'x'); // x.back() -> "xxxx"
+    //     co::vector<fastring> x; x.emplace_back(4, 'x'); // x.back() -> "xxxx"
     template<typename ... X>
-    void emplace(X&& ... x) {
+    void emplace_back(X&& ... x) {
         this->reserve(_size + 1);
         new (_p + _size++) T(std::forward<X>(x)...);
     }
@@ -239,7 +233,7 @@ class array {
 
     // remove the last element
     void remove_back() {
-        this->_destruct(_p[--_size]);
+        if (_size > 0) this->_destruct(_p[--_size]);
     }
 
     // remove the nth element, and move the last element to the nth position
@@ -250,18 +244,18 @@ class array {
                 new (_p + n) T(std::move(_p[--_size]));
                 this->_destruct(_p[_size]);
             } else {
-                this->remove_back();
+                this->_destruct(_p[--_size]);
             }
         }
     }
 
-    void swap(array& x) noexcept {
+    void swap(vector& x) noexcept {
         std::swap(_cap, x._cap);
         std::swap(_size, x._size);
         std::swap(_p, x._p);
     }
 
-    void swap(array&& x) noexcept {
+    void swap(vector&& x) noexcept {
         x.swap(*this);
     }
 

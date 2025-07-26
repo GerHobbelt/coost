@@ -45,8 +45,15 @@ DEF_test(str) {
         EXPECT_EQ(v[2], "y");
 
         v = str::split("||x||y||", "||", 2);
+        EXPECT_EQ(v.size(), 3);
         EXPECT_EQ(v[0], "");
         EXPECT_EQ(v[1], "x");
+        EXPECT_EQ(v[2], "y||");
+
+        fastring s("||x||y||");
+        v = str::split(s.data(), s.size(), "||", 2, 2);
+        EXPECT_EQ(v.size(), 3);
+        EXPECT_EQ(v[0], "");
         EXPECT_EQ(v[2], "y||");
     }
 
@@ -57,6 +64,7 @@ DEF_test(str) {
         fastring s("hello world");
         EXPECT_EQ(str::replace(s, "l", "x"), "hexxo worxd");
         EXPECT_EQ(str::replace(s, "o", "x"), "hellx wxrld");
+        EXPECT_EQ(str::replace(s, "o", "x", 1), "hellx world");
     }
 
     DEF_case(trim) {
@@ -148,25 +156,46 @@ DEF_test(str) {
     }
 
     DEF_case(dbg) {
-        std::vector<fastring> v { "xx", "yy" };
-        co::vector<fastring> cv { "xx", "yy" };
-        EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
-        EXPECT_EQ(str::dbg(cv), "[\"xx\",\"yy\"]");
+        {
+            std::vector<fastring> v { "xx", "yy" };
+            co::vector<fastring> cv { "x\r", "y\n" };
+            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
+            EXPECT_EQ(str::dbg(cv), "[\"x\\r\",\"y\\n\"]");
+        }
+        {
+            std::list<fastring> v { "xx", "yy" };
+            co::list<fastring> cv { "xx", "yy" };
+            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
+            EXPECT_EQ(str::dbg(cv), "[\"xx\",\"yy\"]");
+        }
+        {
+            std::deque<fastring> v { "xx", "yy" };
+            co::deque<fastring> cv { "xx", "yy" };
+            EXPECT_EQ(str::dbg(v),  "[\"xx\",\"yy\"]");
+            EXPECT_EQ(str::dbg(cv), "[\"xx\",\"yy\"]");
+        }
+        {
+            std::set<int> s { 7, 0, 3 };
+            co::set<int> cs { 7, 0, 3 };
+            EXPECT_EQ(str::dbg(s),  "{0,3,7}");
+            EXPECT_EQ(str::dbg(cs), "{0,3,7}");
 
-        std::set<int> s { 7, 0, 3 };
-        co::set<int> cs { 7, 0, 3 };
-        EXPECT_EQ(str::dbg(s),  "{0,3,7}");
-        EXPECT_EQ(str::dbg(cs), "{0,3,7}");
+            std::map<int, int> m { {1, 1}, {2, 2}, {3, 3} };
+            co::map<int, int> cm { {1, 1}, {2, 2}, {3, 3} };
+            EXPECT_EQ(str::dbg(m),  "{1:1,2:2,3:3}");
+            EXPECT_EQ(str::dbg(cm), "{1:1,2:2,3:3}");
 
-        std::map<int, int> m { {1, 1}, {2, 2}, {3, 3} };
-        co::map<int, int> cm { {1, 1}, {2, 2}, {3, 3} };
-        EXPECT_EQ(str::dbg(m),  "{1:1,2:2,3:3}");
-        EXPECT_EQ(str::dbg(cm), "{1:1,2:2,3:3}");
+            std::map<int, fastring> ms {
+                {1, "1"}, {2, "2"}, {3, "3"}
+            };
+            EXPECT_EQ(str::dbg(ms), "{1:\"1\",2:\"2\",3:\"3\"}");
+        }
 
-        std::map<int, fastring> ms {
-            {1, "1"}, {2, "2"}, {3, "3"}
+        co::vector<co::vector<int>> v = {
+            {1, 2, 3},
+            {6, 7, 8},
         };
-        EXPECT_EQ(str::dbg(ms), "{1:\"1\",2:\"2\",3:\"3\"}");
+        EXPECT_EQ(str::dbg(v), "[[1,2,3],[6,7,8]]");
     }
 
     DEF_case(cat) {
@@ -179,6 +208,9 @@ DEF_test(str) {
         std::string s("sss");
         const char* c = "ccc";
         EXPECT_EQ(str::cat(f, s, c, 123), "fffsssccc123");
+
+        co::vector<int> v = { 1, 2, 3 };
+        EXPECT_EQ(str::cat(v), "[1,2,3]");
     }
 }
 

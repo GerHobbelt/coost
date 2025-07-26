@@ -37,10 +37,10 @@ struct Mod {
 
     void make_config(const fastring& exe);
     void parse_config(const fastring& config);
-    co::array<fastring> parse_commandline(int argc, char** argv);
-    co::array<fastring> analyze_args(
-        const co::array<fastring>& args, co::map<fastring, fastring>& kv,
-        co::array<fastring>& bools
+    co::vector<fastring> parse_commandline(int argc, char** argv);
+    co::vector<fastring> analyze_args(
+        const co::vector<fastring>& args, co::map<fastring, fastring>& kv,
+        co::vector<fastring>& bools
     );
 
     co::map<const char*, Flag*> flags;
@@ -330,17 +330,14 @@ inline void Mod::print_help() {
 
 // add quotes to string if necessary
 void format_str(fastring& s) {
-    size_t px = s.find('"');
-    size_t py = s.find('\'');
-    size_t pz = s.find('`');
-    if (px == s.npos && py == s.npos && pz == s.npos) return;
+    const size_t a = s.find_first_of("\"'`#");
+    const size_t b = s.find("//");
+    if (a == s.npos && b == s.npos) return;
 
-    fastring x(std::move(s));
-    s.reserve(x.size() + 8);
-    if (px == s.npos) { s << '"' << x << '"'; return; }
-    if (py == s.npos) { s << '\'' << x << '\''; return; }
-    if (pz == s.npos) { s << '`' << x << '`'; return; }
-    s << "```" << x << "```";
+    fastring r(std::move(s));
+    if (a == s.npos || !r.contains('"')) { s << '"' << r << '"'; return; }
+    if (!r.contains('\'')) { s << '\'' << r << '\''; return; }
+    s << "```" << r << "```";
 }
 
 void Mod::make_config(const fastring& exe) {
@@ -353,7 +350,7 @@ void Mod::make_config(const fastring& exe) {
     }
 
     fastring fname(exe);
-    if (fname.ends_with(".exe")) fname.resize(fname.size() - 4);
+    fname.remove_suffix(".exe");
     fname += ".conf";
 
     fs::fstream f(fname.c_str(), 'w');
@@ -391,10 +388,10 @@ void Mod::make_config(const fastring& exe) {
 // @kv:  for -a=b, or -a b, or a=b
 // @k:   for -a, -xyz
 // return non-flag elements (etc. hello, -8, -8k, -, --, --- ...)
-co::array<fastring> Mod::analyze_args(
-    const co::array<fastring>& args, co::map<fastring, fastring>& kv, co::array<fastring>& k 
+co::vector<fastring> Mod::analyze_args(
+    const co::vector<fastring>& args, co::map<fastring, fastring>& kv, co::vector<fastring>& k 
 ) {
-    co::array<fastring> res;
+    co::vector<fastring> res;
 
     for (size_t i = 0; i < args.size(); ++i) {
         const fastring& arg = args[i];
@@ -466,10 +463,10 @@ co::array<fastring> Mod::analyze_args(
     return res;
 }
 
-co::array<fastring> Mod::parse_commandline(int argc, char** argv) {
-    if (argc <= 1) return co::array<fastring>();
+co::vector<fastring> Mod::parse_commandline(int argc, char** argv) {
+    if (argc <= 1) return co::vector<fastring>();
 
-    co::array<fastring> args(argc - 1);
+    co::vector<fastring> args(argc - 1);
     for (int i = 1; i < argc; ++i) args.push_back(fastring(argv[i]));
 
     if (args.size() == 1 && args[0] == "--") {
@@ -478,8 +475,8 @@ co::array<fastring> Mod::parse_commandline(int argc, char** argv) {
     }
 
     co::map<fastring, fastring> kv;
-    co::array<fastring> k;
-    co::array<fastring> v = this->analyze_args(args, kv, k);
+    co::vector<fastring> k;
+    co::vector<fastring> v = this->analyze_args(args, kv, k);
 
     // $exe -xx    (xx is a flag of string type)
     if (v.empty() && kv.empty() && k.size() == 1) {
@@ -630,7 +627,7 @@ void add_flag(
 
 } // namespace xx
 
-co::array<fastring> parse(int argc, char** argv) {
+co::vector<fastring> parse(int argc, char** argv) {
     auto& mod = xx::mod();
     auto v = mod.parse_commandline(argc, argv);
     if (FLG_mkconf) {
