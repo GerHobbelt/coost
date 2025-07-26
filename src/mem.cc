@@ -87,7 +87,7 @@ inline void _vm_commit(void* p, size_t n) {
 }
 
 inline void _vm_decommit(void* p, size_t n) {
-    ::mmap(
+    (void) ::mmap(
         p, n, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0
     );
@@ -139,7 +139,7 @@ class MemBlocks {
         }
     }
 
-    void* alloc(uint32 n, uint32 align=sizeof(size_t));
+    void* alloc(uint32 n, uint32 align=sizeof(void*));
     uint32 size() const { return _u ? _u[-2] : 0; }
     uint32 blk_size() const { return _blk_size; }
     uint32 pos() const { return _p; }
@@ -184,56 +184,56 @@ void* MemBlocks::alloc(uint32 n, uint32 align) {
     return r;
 }
 
-typedef std::function<void(void*)> F;
+typedef std::function<void()> F;
 
 class StaticAlloc {
   public:
-    static const uint32 N = sizeof(F) + sizeof(void*);
+    static const uint32 N = sizeof(F);
 
     StaticAlloc(uint32 m=32*1024, uint32 d=8*1024)
-        : _m(m), _d(d), _f(8192) {
+        : _m(m), _d(d) {
     }
-    ~StaticAlloc() {
-        this->_call_destructor(_d);
-        this->_call_destructor(_f);
+    ~StaticAlloc();
+
+    void* alloc(size_t n) {
+        return _m.alloc((uint32)n, n <= 32 ? sizeof(size_t) : 64);
     }
 
-    void* alloc(size_t n, F&& f, int x=0) {
-        void* r = _m.alloc((uint32)n, n <= 32 ? sizeof(size_t) : 64);
-        if (f) {
-            MemBlocks& b = x ? _f : _d;
-            char* p = (char*) b.alloc(N);
-            new(p) F(std::forward<F>(f));          // save the function
-            *god::cast<void**>(p + sizeof(F)) = r; // save the pointer
-        }
-        return r;
-    }
-
-    void _call_destructor(MemBlocks& d) {
-        const uint32 M = d.blk_size() / N;
-        for (uint32 i = d.size(); i > 0; --i) {
-            const uint32 m = i != d.size() ? M : d.pos() / N;
-            for (uint32 x = m; x > 0; --x) {
-                char* p = d[i - 1] + (x - 1) * N;
-                (*god::cast<F*>(p))(*god::cast<void**>(p + sizeof(F)));
-            }
-        }
+    void dealloc(F&& f) {
+        char* p = (char*) _d.alloc(N);
+        new(p) F(std::forward<F>(f));
     }
 
   private:
     MemBlocks _m;
     MemBlocks _d;
-    MemBlocks _f;
 };
+
+StaticAlloc::~StaticAlloc() {
+    const uint32 M = _d.blk_size() / N;
+    for (uint32 i = _d.size(); i > 0; --i) {
+        const uint32 m = i != _d.size() ? M : _d.pos() / N;
+        for (uint32 x = m; x > 0; --x) {
+            F* f = god::cast<F*>(_d[i - 1] + (x - 1) * N);
+            (*f)();
+        }
+    }
+}
 
 class Root {
   public:
     Root() : _mtx(), _a(4096, 4096) {}
     ~Root() = default;
 
-    void* alloc(size_t n, F&& f) {
-        std::lock_guard<std::mutex> g(_mtx);
-        return _a.alloc(n, std::forward<F>(f));
+    template<typename T, typename... Args>
+    T* make(Args&&... args) {
+        void* p;
+        {
+            std::lock_guard<std::mutex> g(_mtx);
+            p = _a.alloc(sizeof(T));
+            if (p) _a.dealloc([p](){ ((T*)p)->~T(); });
+        }
+        return p ? new(p) T(std::forward<Args>(args)...) : 0;
     }
 
   private:
@@ -242,14 +242,6 @@ class Root {
 };
 
 Root& root() { static Root r; return r; }
-
-template<typename T, typename... Args>
-inline T* _make_global(Args&&... args) {
-    static_assert(sizeof(T) <= 4096, "");
-    return new (root().alloc(
-        sizeof(T), [](void* p){ if (p) ((T*)p)->~T(); }
-    )) T(std::forward<Args>(args)...);
-}
 
 
 #if __arch64
@@ -614,7 +606,8 @@ GlobalAlloc::~GlobalAlloc() {
 
 class ThreadAlloc {
   public:
-    ThreadAlloc(GlobalAlloc* ga) : _lb(0), _la(0), _sa(0), _ga(ga) {
+    ThreadAlloc(GlobalAlloc* ga)
+        : _lb(0), _la(0), _sa(0), _ga(ga), _sai(), _sau() {
         static uint32 g_alloc_id = (uint32)-1;
         _id = atomic_inc(&g_alloc_id, mo_relaxed);
     }
@@ -624,10 +617,7 @@ class ThreadAlloc {
     void* alloc(size_t n);
     void free(void* p, size_t n);
     void* realloc(void* p, size_t o, size_t n);
-
-    void* salloc(size_t n, F&& f, int x) {
-        return _ka.alloc(n, std::forward<F>(f), x);
-    }
+    StaticAlloc& static_alloc(int i) { return i ? _sai : _sau; }
 
   private:
     union { LargeBlock* _lb; co::clist _llb; };
@@ -635,18 +625,19 @@ class ThreadAlloc {
     union { SmallAlloc* _sa; co::clist _lsa; };
     uint32 _id;
     GlobalAlloc* _ga;
-    StaticAlloc _ka;
+    StaticAlloc _sai;
+    StaticAlloc _sau;
 };
 
 
 inline GlobalAlloc* galloc() {
-    static GlobalAlloc* ga = _make_global<GlobalAlloc>();
+    static GlobalAlloc* ga = root().make<GlobalAlloc>();
     return ga;
 }
 
 inline ThreadAlloc* make_thread_alloc() {
     auto g = galloc();
-    return _make_global<ThreadAlloc>(g);
+    return root().make<ThreadAlloc>(g);
 }
 
 inline ThreadAlloc* talloc() {
@@ -727,7 +718,7 @@ inline void* ThreadAlloc::alloc(size_t n) {
     void* p = 0;
     SmallAlloc* sa;
     if (n <= 2048) {
-        const uint32 u = n > 16 ? god::b16((uint32)n) : 1;
+        const uint32 u = n > 16 ? god::nb<16>((uint32)n) : 1;
         if (_sa && (p = _sa->alloc(u))) goto end;
 
         if (_sa && _sa->next) {
@@ -768,7 +759,7 @@ inline void* ThreadAlloc::alloc(size_t n) {
         }
 
     } else if (n <= g_max_alloc_size) {
-        const uint32 u = god::b4k((uint32)n);
+        const uint32 u = god::nb<4096>((uint32)n);
         if (_la && (p = _la->alloc(u))) goto end;
 
         if (_la && _la->next) {
@@ -844,7 +835,7 @@ inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
 
         const auto sa = (SmallAlloc*) god::align_down<1u << g_sb_bits>(p);
         if (sa == _sa && n <= 2048) {
-            const uint32 l = god::b16((uint32)n);
+            const uint32 l = god::nb<16>((uint32)n);
             auto x = sa->realloc(p, k >> 4, l);
             if (x) return x;
         }
@@ -855,7 +846,7 @@ inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
 
         const auto la = (LargeAlloc*) god::align_down<1u << g_lb_bits>(p);
         if (la == _la && n <= g_max_alloc_size) {
-            const uint32 l = god::b4k((uint32)n);
+            const uint32 l = god::nb<4096>((uint32)n);
             auto x = la->realloc(p, k >> 12, l);
             if (x) return x;
         }
@@ -868,9 +859,13 @@ inline void* ThreadAlloc::realloc(void* p, size_t o, size_t n) {
 
 } // xx
 
-void* _salloc(size_t n, std::function<void(void*)>&& f, int x) {
+void* _salloc(size_t n, int x) {
     assert(n <= 4096);
-    return xx::talloc()->salloc(n, std::forward<xx::F>(f), x);
+    return xx::talloc()->static_alloc(x).alloc(n);
+}
+
+void _dealloc(std::function<void()>&& f, int x) {
+    xx::talloc()->static_alloc(x).dealloc(std::forward<xx::F>(f));
 }
 
 #ifndef CO_USE_SYS_MALLOC

@@ -8,7 +8,7 @@
 
 namespace co {
 
-template <typename T, typename Alloc=co::default_allocator>
+template<typename T, typename Alloc=co::default_allocator>
 class array {
   public:
     constexpr array() noexcept
@@ -20,29 +20,28 @@ class array {
         : _cap(cap), _size(0), _p((T*) Alloc::alloc(sizeof(T) * cap)) {
     }
 
-    // create an array of n elements with the same value: @x
-    // condition: X is not int or T is int.
-    template <
-        typename X,
-        god::enable_if_t<
-            !god::is_same<god::remove_cvref_t<X>, int>() ||
-            god::is_same<god::remove_cv_t<T>, int>(), int
-        > = 0
-    >
+    // create an array of n elements with value @x
+    //   - cond: X is not int or T is int.
+    //   - e.g. 
+    //     co::array<int> a(4, 3);     -> [3,3,3,3]
+    //     co::array<char> x(2, 'x');  -> ['x','x']
+    template<typename X, god::if_t<
+        !god::is_same<god::rm_cvref_t<X>, int>() ||
+        god::is_same<god::rm_cv_t<T>, int>(), int
+    > = 0>
     array(size_t n, X&& x)
         : _cap(n), _size(n), _p((T*) Alloc::alloc(sizeof(T) * n)) {
         for (size_t i = 0; i < n; ++i) new (_p + i) T(x);
     }
 
     // create an array of n elements with default value
-    // condition: X is int and T is not int.
-    template <
-        typename X,
-        god::enable_if_t<
-            god::is_same<god::remove_cvref_t<X>, int>() && 
-            !god::is_same<god::remove_cv_t<T>, int>(), int
-        > = 0
-    >
+    //   - cond: X is int and T is not int.
+    //   - e.g. 
+    //     co::array<fastring> a(4, 0);
+    template<typename X, god::if_t<
+        god::is_same<god::rm_cvref_t<X>, int>() &&
+        !god::is_same<god::rm_cv_t<T>, int>(), int
+    > = 0>
     array(size_t n, X&&)
         : _cap(n), _size(n), _p((T*) Alloc::alloc(sizeof(T) * n)) {
         for (size_t i = 0; i < n; ++i) new (_p + i) T();
@@ -66,7 +65,7 @@ class array {
         for (const auto& e : x) new (_p + _size++) T(e);
     }
 
-    template <typename It, god::enable_if_t<god::is_class<It>(), int> = 0>
+    template<typename It, god::if_t<god::is_class<It>(), int> = 0>
     array(It beg, It end) : array(8) {
         this->append(beg, end);
     }
@@ -77,9 +76,7 @@ class array {
         _size += n;
     }
 
-    ~array() {
-        this->reset();
-    }
+    ~array() { this->reset(); }
 
     size_t capacity() const noexcept { return _cap; }
     size_t size() const noexcept { return _size; }
@@ -124,14 +121,10 @@ class array {
         }
     }
 
-    /**
-     * size -> n
-     *   - Reduced elements will be destroyed if n is less than the current size.
-     *   - NOTE: No element will be created if n is greater than the current size.
-     */
     void resize(size_t n) {
         this->reserve(n);
         this->_destruct_range(_p, n, _size);
+        this->_construct_range(_p, _size, n);
         _size = n;
     }
 
@@ -139,7 +132,8 @@ class array {
     void reset() {
         if (_p) {
             this->_destruct_range(_p, 0, _size);
-            Alloc::free(_p, sizeof(T) * _cap); _p = 0;
+            Alloc::free(_p, sizeof(T) * _cap);
+            _p = 0;
             _cap = _size = 0;
         }
     }
@@ -174,12 +168,13 @@ class array {
         _size += n;
     }
 
-    template <typename It, god::enable_if_t<god::is_class<It>(), int> = 0>
+    template<typename It, god::if_t<god::is_class<It>(), int> = 0>
     void append(It beg, It end) {
         for (auto it = beg; it != end; ++it) this->append(*it);
     }
 
-    // append n elements from an array
+    // append n elements, it is not safe if p overlaps with the internal buffer 
+    // of the array, use safe_append() in that case.
     void append(const T* p, size_t n) {
         this->reserve(_size + n);
         this->_copy_n(_p + _size, p, n);
@@ -210,7 +205,7 @@ class array {
         }
     }
 
-    // like append(), but it is safe when p points to part of the array itself.
+    // it is ok if p overlaps with the internal buffer of the array
     void safe_append(const T* p, size_t n) {
         if (p < _p || p >= _p + _size) {
             this->append(p, n);
@@ -224,7 +219,9 @@ class array {
     }
 
     // insert a new element (construct with args x...) at the back
-    template <typename ... X>
+    //   - e.g. 
+    //     co::array<fastring> x; x.emplace(4, 'x'); // x.back() -> "xxxx"
+    template<typename ... X>
     void emplace(X&& ... x) {
         this->reserve(_size + 1);
         new (_p + _size++) T(std::forward<X>(x)...);
@@ -287,38 +284,48 @@ class array {
     iterator end() const noexcept { return iterator(_p + _size); }
 
   private:
-    template<typename X, god::enable_if_t<god::is_trivially_copyable<X>(), int> = 0>
+    template<typename X, god::if_t<god::is_trivially_copyable<X>(), int> = 0>
     void _copy_n(X* dst, const X* src, size_t n) {
         memcpy(dst, src, sizeof(X) * n);
     }
 
-    template<typename X, god::enable_if_t<!god::is_trivially_copyable<X>(), int> = 0>
+    template<typename X, god::if_t<!god::is_trivially_copyable<X>(), int> = 0>
     void _copy_n(X* dst, const X* src, size_t n) {
         for (size_t i = 0; i < n; ++i) new (dst + i) X(src[i]);
     }
 
-    template<typename X, god::enable_if_t<god::is_trivially_copyable<X>(), int> = 0>
+    template<typename X, god::if_t<god::is_trivially_copyable<X>(), int> = 0>
     void _move_n(X* dst, X* src, size_t n) {
         memcpy(dst, src, sizeof(X) * n);
     }
 
-    template<typename X, god::enable_if_t<!god::is_trivially_copyable<X>(), int> = 0>
+    template<typename X, god::if_t<!god::is_trivially_copyable<X>(), int> = 0>
     void _move_n(X* dst, X* src, size_t n) {
         for (size_t i = 0; i < n; ++i) new (dst + i) X(std::move(src[i]));
     }
 
-    template<typename X, god::enable_if_t<god::is_trivially_destructible<X>(), int> = 0>
+    template<typename X, god::if_t<!god::is_class<X>(), int> = 0>
+    void _construct_range(X* p, size_t beg, size_t end) {
+        if (beg < end) memset(p + beg, 0, (end - beg) * sizeof(T));
+    }
+
+    template<typename X, god::if_t<god::is_class<X>(), int> = 0>
+    void _construct_range(X* p, size_t beg, size_t end) {
+        for (; beg < end; ++beg) new (p + beg) T();
+    }
+
+    template<typename X, god::if_t<god::is_trivially_destructible<X>(), int> = 0>
     void _destruct(X&) {}
 
-    template<typename X, god::enable_if_t<!god::is_trivially_destructible<X>(), int> = 0>
+    template<typename X, god::if_t<!god::is_trivially_destructible<X>(), int> = 0>
     void _destruct(X& p) { p.~X(); }
 
-    template<typename X, god::enable_if_t<god::is_trivially_destructible<X>(), int> = 0>
+    template<typename X, god::if_t<god::is_trivially_destructible<X>(), int> = 0>
     void _destruct_range(X*, size_t, size_t) {}
 
-    template<typename X, god::enable_if_t<!god::is_trivially_destructible<X>(), int> = 0>
+    template<typename X, god::if_t<!god::is_trivially_destructible<X>(), int> = 0>
     void _destruct_range(X* p, size_t beg, size_t end) {
-        for (; beg < end; ++beg) _p[beg].~X();
+        for (; beg < end; ++beg) p[beg].~X();
     }
   
   private:

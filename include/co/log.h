@@ -8,7 +8,7 @@
 __coapi DEC_bool(cout);
 __coapi DEC_int32(min_log_level);
 
-namespace ___ {
+namespace _xx {
 namespace log {
 
 /**
@@ -110,9 +110,9 @@ constexpr int path_base_len(const char(&s)[N], int i = N - 1) {
 
 } // namespace xx
 } // namespace log
-} // namespace ___
+} // namespace _xx
 
-using namespace ___;
+using namespace _xx;
 
 #define _CO_FNAME log::xx::path_base(__FILE__)
 #define _CO_FNLEN log::xx::path_base_len(__FILE__)
@@ -120,7 +120,7 @@ using namespace ___;
 
 // TLOG are logs grouped by the topic.
 // TLOG("xxx") << "hello xxx" << 23;
-// It is better to use a literal string for the topic.
+// It is better to use literal string as the topic.
 #define TLOG(topic) log::xx::TLogSaver(_CO_FILELINE, topic).stream()
 #define TLOG_IF(topic, cond) if (cond) TLOG(topic)
 
@@ -166,7 +166,7 @@ using namespace ___;
 #define CHECK_LT(a, b) _CO_CHECK_OP(a, b, <)
 
 // occasional log
-#define _CO_LOG_COUNTER CO_CONCAT(_co_log_counter_, __LINE__)
+#define _CO_LOG_COUNTER pp_concat(_co_log_counter_, __LINE__)
 
 #define _CO_LOG_EVERY_N(n, what) \
     static unsigned int _CO_LOG_COUNTER = 0; \

@@ -42,7 +42,7 @@ DEF_bool(log_compress, false, ">>#0 if true, compress rotated log files with xz"
 static bool _init_done = false;
 static bool& _unnamed = *[]() { _init_done = true; return &_init_done; }();
 
-namespace ___ {
+namespace _xx {
 namespace log {
 namespace xx {
 
@@ -175,7 +175,6 @@ class LogFile {
   public:
     LogFile()
         : _file(256), _path(256), _path_base(256), _day(0), _checked(false) {
-        //_file.open("", 'a');
     }
 
     fs::file& open(const char* topic, int level);
@@ -209,9 +208,9 @@ bool LogFile::check_config(const char* topic, int level) {
         s.append(*m.exename);
     } else {
         s.append(f);
-        s.remove_tail(".log");
+        s.remove_suffix(".log");
     }
-    s.remove_tail(".exe");
+    s.remove_suffix(".exe");
 
     // prefix of log file path
     _path_base << d;
@@ -450,7 +449,7 @@ bool Logger::start() {
         do {
             // ensure max_log_buffer_size >= 1M, max_log_size >= 256
             auto& bs = FLG_max_log_buffer_size;
-            auto& ls = FLG_max_log_size;
+            auto& ls = *(uint32*)&FLG_max_log_size;
             if (bs < (1 << 20)) bs = 1 << 20;
             if (ls < 256) ls = 256;
             if (ls > (bs >> 2)) ls = bs >> 2;
@@ -1018,7 +1017,7 @@ int ExceptHandler::handle_exception(void* e) {
 }
 
 #else
-int ExceptHandler::handle_exception(void*) {}
+int ExceptHandler::handle_exception(void*) { return 0; }
 #endif // _WIN32
 
 Mod::Mod() {
@@ -1093,10 +1092,10 @@ void set_write_cb(const std::function<void(const char*, const void*, size_t)>& c
 }
 
 } // log
-} // ___
+} // _xx
 
 #ifdef _WIN32
 LONG WINAPI _co_on_exception(PEXCEPTION_POINTERS p) {
-    return ___::log::xx::on_exception(p);
+    return _xx::log::xx::on_except(p);
 }
 #endif

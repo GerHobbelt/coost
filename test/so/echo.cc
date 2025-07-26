@@ -62,7 +62,7 @@ void client_fun(int i) {
 }
 
 int main(int argc, char** argv) {
-    flag::init(argc, argv);
+    flag::parse(argc, argv);
 
     if (FLG_c <= 0) {
         tcp::Server().on_connection(conn_cb).start(
@@ -86,11 +86,12 @@ int main(int argc, char** argv) {
             ssum += g_count[i].s;
         }
 
-        COUT << "Speed: "
-             << (ssum / FLG_t) << " request/sec, "
-             << (rsum / FLG_t) << " response/sec";
-        COUT << "Requests: " << ssum;
-        COUT << "Responses: " << rsum;
+        co::print("Speed: ",
+            (ssum / FLG_t), " request/sec, ",
+            (rsum / FLG_t), " response/sec"
+        );
+        co::print("Requests: ", ssum);
+        co::print("Responses: ", rsum);
     }
 
     return 0;

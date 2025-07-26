@@ -288,75 +288,75 @@ std::string ss;
 const char* s;
 const char* p;
 
-    BM_group(string_search) {
-        int64 v;
-        size_t r;
-        const char* t;
+BM_group(string_search) {
+    int64 v;
+    size_t r;
+    const char* t;
 
-        BM_add(QS)(
-            v = QS(s, p);
-        )
-        BM_use(v);
+    BM_add(QS)(
+        v = QS(s, p);
+    )
+    BM_use(v);
 
-        BM_add(tw)(
-            v = tw(s, p);
-        )
-        BM_use(v);
+    BM_add(tw)(
+        v = tw(s, p);
+    )
+    BM_use(v);
 
-        BM_add(std::string::find)(
-            r = ss.find(p);
-        )
-        BM_use(r);
+    BM_add(std::string::find)(
+        r = ss.find(p);
+    )
+    BM_use(r);
 
-        BM_add(strstr)(
-            t = strstr(s, p);
-        )
-        BM_use(t);
-    }
+    BM_add(strstr)(
+        t = strstr(s, p);
+    )
+    BM_use(t);
+}
 
-    BM_group(reverse_search) {
-        int64 v;
-        size_t r;
+BM_group(reverse_search) {
+    int64 v;
+    size_t r;
 
-        BM_add(RQS)(
-            v = RQS(s, p);
-        )
-        BM_use(v);
-       
+    BM_add(RQS)(
+        v = RQS(s, p);
+    )
+    BM_use(v);
+    
 
-        BM_add(rtw)(
-            v = rtw(s, p);
-        )
-        BM_use(v);
+    BM_add(rtw)(
+        v = rtw(s, p);
+    )
+    BM_use(v);
 
-        BM_add(std::string::rfind)(
-            r = ss.rfind(p);
-        )
-        BM_use(r);
-    }
+    BM_add(std::string::rfind)(
+        r = ss.rfind(p);
+    )
+    BM_use(r);
+}
 
 
 int main(int argc, char** argv) {
-    flag::init(argc, argv);
+    flag::parse(argc, argv);
 
     ss = "hello world" + std::string(FLG_n, 'x');
     s = ss.c_str();
     p = FLG_s.c_str();
 
-    CLOG << QS(s, "llo");
-    CLOG << QS(s, "world");
-    CLOG << QS(s, "xxxxx");
-    CLOG << RQS(s, "llo");
-    CLOG << RQS(s, "world");
-    CLOG << RQS(s, "xxxxx");
+    co::print(QS(s, "llo"));
+    co::print(QS(s, "world"));
+    co::print(QS(s, "xxxxx"));
+    co::print(RQS(s, "llo"));
+    co::print(RQS(s, "world"));
+    co::print(RQS(s, "xxxxx"));
 
-    CLOG << tw(s, "llo");
-    CLOG << tw(s, "world");
-    CLOG << tw(s, "xxxxx");
-    CLOG << rtw(s, "llo");
-    CLOG << rtw(s, "world");
-    CLOG << rtw(s, "xxxxx");
-    CLOG << ss.rfind("xxxxx");
+    co::print(tw(s, "llo"));
+    co::print(tw(s, "world"));
+    co::print(tw(s, "xxxxx"));
+    co::print(rtw(s, "llo"));
+    co::print(rtw(s, "world"));
+    co::print(rtw(s, "xxxxx"));
+    co::print(ss.rfind("xxxxx"));
 
     bm::run_benchmarks();
 
