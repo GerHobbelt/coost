@@ -1,12 +1,14 @@
 # coost
 
 [English](readme.md) | 简体中文  
-[![Linux Build](https://img.shields.io/github/actions/workflow/status/idealvin/coost/linux.yml?branch=master&logo=linux)](https://github.com/idealvin/coost/actions?query=workflow%3ALinux)
-[![Mac Build](https://img.shields.io/github/actions/workflow/status/idealvin/coost/macos.yml?branch=master&logo=apple)](https://github.com/idealvin/coost/actions?query=workflow%3AmacOS)
-[![Windows Build](https://img.shields.io/github/actions/workflow/status/idealvin/coost/win.yml?branch=master&logo=windows)](https://github.com/idealvin/coost/actions?query=workflow%3AWindows)
-[![FreeBSD Build](https://img.shields.io/github/actions/workflow/status/idealvin/coost/freebsd.yml?branch=master&logo=freebsd)](https://github.com/idealvin/coost/actions?query=workflow%3AFreeBSD)  
+[![Linux](https://img.shields.io/github/actions/workflow/status/idealvin/coost/linux.yml?branch=master&label=Linux)](https://github.com/idealvin/coost/actions?query=workflow%3ALinux)
+[![Mac](https://img.shields.io/github/actions/workflow/status/idealvin/coost/macos.yml?branch=master&label=Mac)](https://github.com/idealvin/coost/actions?query=workflow%3AmacOS)
+[![Windows](https://img.shields.io/github/actions/workflow/status/idealvin/coost/win.yml?branch=master&label=Windows)](https://github.com/idealvin/coost/actions?query=workflow%3AWindows)
+[![Windows-arm64](https://img.shields.io/github/actions/workflow/status/idealvin/coost/win_arm64.yml?branch=master&label=Windows-arm64)](https://github.com/idealvin/coost/actions?query=workflow%3AWindows-arm64)
+[![FreeBSD](https://img.shields.io/github/actions/workflow/status/idealvin/coost/freebsd.yml?branch=master&label=FreeBSD)](https://github.com/idealvin/coost/actions?query=workflow%3AFreeBSD)
 [![Release](https://img.shields.io/github/release/idealvin/coost.svg)](https://github.com/idealvin/coost/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 
 **[A tiny, minimalist Swiss Army knife for C++.](https://github.com/idealvin/coost)**
@@ -140,11 +142,11 @@ xmake r unitest -os  # 仅运行 os 单元中的测试用例, os 即单元测试
 
 ### 3.4 JSON
 
-**[Json](https://github.com/idealvin/coost/blob/master/include/co/json.h)** 采用**流畅(fluent)接口设计**，用起来更加方便。
+**[JSON](https://github.com/idealvin/coost/blob/master/include/co/json.h)** 采用**流畅(fluent)接口设计**，用起来更加方便。
 
 ```cpp
 // {"a":23,"b":false,"s":"123","v":[1,2,3],"o":{"xx":0}}
-co::Json x = {
+json::any x = {
     { "a", 23 },
     { "b", false },
     { "s", "123" },
@@ -155,7 +157,7 @@ co::Json x = {
 };
 
 // equal to x
-co::Json y = Json()
+json::any y = Json()
     .add_member("a", 23)
     .add_member("b", false)
     .add_member("s", "123")
