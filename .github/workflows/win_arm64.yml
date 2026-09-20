@@ -28,5 +28,6 @@ jobs:
 
       - name: Run unitest
         run: |
-          cd cmakebuild\Release\bin
+          cd cmakebuild\bin\Release
           .\unitest.exe
+          .\co.exe
