@@ -22,9 +22,9 @@ struct __cacheline_aligned Iocp {
     bool add_event(sock_t fd);
     bool add_ev_read(sock_t fd, void*)  { return this->add_event(fd); }
     bool add_ev_write(sock_t fd, void*) { return this->add_event(fd); }
-    void del_event(sock_t fd) {}
-    void del_ev_read(sock_t fd) {}
-    void del_ev_write(sock_t fd) {}
+    void del_event(sock_t) {}
+    void del_ev_read(sock_t) {}
+    void del_ev_write(sock_t) {}
 
     int wait(int ms);
     void signal();
@@ -37,7 +37,7 @@ struct __cacheline_aligned Iocp {
     int _n;
     HANDLE _iocp;
     OVERLAPPED_ENTRY* _events;
-    constexpr static int N = 256;
+    constexpr static int N = 1024;
 };
 
 using Epoll = Iocp;

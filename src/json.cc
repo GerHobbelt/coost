@@ -83,7 +83,7 @@ struct Cache {
 static __thread Cache* g_c;
 
 inline Cache& cache() {
-    return g_c ? *g_c : *(g_c = co::_make_static<Cache>()); 
+    return g_c ? *g_c : *(g_c = co::_make_rootic<Cache>()); 
 }
 
 
@@ -693,7 +693,7 @@ co::string& any::_json2str(co::string& fs, bool debug, int mdp) const {
                 auto& a = _h->ao;
                 for (uint32 i = 0; i < a.size(); i += 2) {
                     fs << '"' << (S)a[i] << '"' << ':';
-                    ((any&)a[i + 1])._json2str(fs, debug, mdp) << ',';
+                    (*(any*)&a[i + 1])._json2str(fs, debug, mdp) << ',';
                 }
             }
             fs.back() == ',' ? (void)(fs.back() = '}') : (void)(fs.append('}'));
@@ -705,7 +705,7 @@ co::string& any::_json2str(co::string& fs, bool debug, int mdp) const {
             if (_h->p) {
                 auto& a = _h->ao;
                 for (uint32 i = 0; i < a.size(); ++i) {
-                    ((any&)a[i])._json2str(fs, debug, mdp) << ',';
+                    (*(any*)&a[i])._json2str(fs, debug, mdp) << ',';
                 }
             }
             fs.back() == ',' ? (void)(fs.back() = ']') : (void)(fs.append(']'));
@@ -739,7 +739,7 @@ co::string& any::_json2pretty(co::string& fs, int indent, int n, int mdp) const 
                 for (uint32 i = 0; i < a.size(); i += 2) {
                     fs.append('\n').append(n, ' ');
                     fs << '"' << (S)a[i] << '"' << ": ";
-                    ((any&)a[i + 1])._json2pretty(fs, indent, n + indent, mdp) << ',';
+                    (*(any*)&a[i + 1])._json2pretty(fs, indent, n + indent, mdp) << ',';
                 }
             }
             if (fs.back() == ',') {
@@ -756,7 +756,7 @@ co::string& any::_json2pretty(co::string& fs, int indent, int n, int mdp) const 
                 auto& a = _h->ao;
                 for (uint32 i = 0; i < a.size(); ++i) {
                     fs.append('\n').append(n, ' ');
-                    ((any&)a[i])._json2pretty(fs, indent, n + indent, mdp) << ',';
+                    (*(any*)&a[i])._json2pretty(fs, indent, n + indent, mdp) << ',';
                 }
             }
             if (fs.back() == ',') {
@@ -801,7 +801,7 @@ void any::remove(const char* key) noexcept {
                 const auto s = (const char*)a[i];
                 if (strcmp(key, s) == 0) {
                     xx::cache().free((void*)s, (uint32)strlen(s) + 1);
-                    ((any&)a[i + 1]).reset();
+                    (*(any*)&a[i + 1]).reset();
                     a.remove_pair(i);
                     return;
                 }
@@ -819,7 +819,7 @@ void any::erase(const char* key) noexcept {
                 const auto s = (const char*)a[i];
                 if (strcmp(key, s) == 0) {
                     xx::cache().free((void*)s, (uint32)strlen(s) + 1);
-                    ((any&)a[i + 1]).reset();
+                    (*(any*)&a[i + 1]).reset();
                     a.erase_pair(i);
                     return;
                 }
@@ -835,7 +835,7 @@ _beg:
             this->push_back(any());
         }
         this->push_back(any());
-        return (any&) _h->ao[i];
+        return *(any*)&_h->ao[i];
     }
 
     if (_h->type == t_array) goto _arr;
@@ -845,13 +845,13 @@ _beg:
 _arr:
     const uint32 n = _h->p ? _h->ao.size() : 0;
     if (i < n) {
-        return (any&) _h->ao[i];
+        return *(any*)&_h->ao[i];
     } else {
         for (uint32 k = n; k < i; ++k) {
             this->push_back(any());
         }
         this->push_back(any());
-        return (any&) _h->ao[i];
+        return *(any*)&_h->ao[i];
     }
 }
 
@@ -859,7 +859,7 @@ any& any::_set(const char* key) {
 _beg:
     if (this->is_null()) {
         this->add_member(key, any());
-        return (any&) _h->ao[1];
+        return *(any*)&_h->ao[1];
     }
 
     if (_h->type == t_object) goto _obj;
@@ -872,7 +872,7 @@ _obj:
     }
 
     this->add_member(key, any());
-    return (any&) _h->ao.back();
+    return *(any*)&_h->ao.back();
 }
 
 void any::reset() noexcept {
